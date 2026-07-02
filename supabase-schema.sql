@@ -50,4 +50,64 @@ for update
 using (true)
 with check (true);
 
-alter publication supabase_realtime add table public.gatherkit_event_rsvps;
+create table if not exists public.gatherkit_event_tasks (
+  id uuid primary key default gen_random_uuid(),
+  event_slug text not null,
+  task_id text not null,
+  completed boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (event_slug, task_id)
+);
+
+drop trigger if exists gatherkit_event_tasks_set_updated_at on public.gatherkit_event_tasks;
+
+create trigger gatherkit_event_tasks_set_updated_at
+before update on public.gatherkit_event_tasks
+for each row
+execute function public.set_updated_at();
+
+alter table public.gatherkit_event_tasks enable row level security;
+
+drop policy if exists "gatherkit_event_tasks_public_read" on public.gatherkit_event_tasks;
+drop policy if exists "gatherkit_event_tasks_public_insert" on public.gatherkit_event_tasks;
+drop policy if exists "gatherkit_event_tasks_public_update" on public.gatherkit_event_tasks;
+
+create policy "gatherkit_event_tasks_public_read"
+on public.gatherkit_event_tasks
+for select
+using (true);
+
+create policy "gatherkit_event_tasks_public_insert"
+on public.gatherkit_event_tasks
+for insert
+with check (true);
+
+create policy "gatherkit_event_tasks_public_update"
+on public.gatherkit_event_tasks
+for update
+using (true)
+with check (true);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_event_rsvps'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_event_rsvps;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_event_tasks'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_event_tasks;
+  end if;
+end $$;

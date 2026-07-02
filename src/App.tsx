@@ -58,6 +58,11 @@ type MessageLogItem = {
   sentAt: string
 }
 
+type RunTaskRow = {
+  task_id: string
+  completed: boolean
+}
+
 type EventTemplate = {
   label: EventType
   duration: string
@@ -200,7 +205,16 @@ function App() {
   const [messageBody, setMessageBody] = useState('')
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
   const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Connecting to Supabase...' : 'Local demo mode')
-  const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
+  const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(() => {
+    const storedTasks = window.localStorage.getItem('gatherkit-run-tasks')
+    if (!storedTasks) return ['confirm-location', 'post-welcome-sign']
+
+    try {
+      return JSON.parse(storedTasks) as string[]
+    } catch {
+      return ['confirm-location', 'post-welcome-sign']
+    }
+  })
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(() => {
     const storedRows = window.localStorage.getItem('gatherkit-rsvps')
     if (!storedRows) return initialRsvpRows
@@ -270,6 +284,12 @@ function App() {
   }, [rsvpRows])
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      window.localStorage.setItem('gatherkit-run-tasks', JSON.stringify(checkedRunTasks))
+    }
+  }, [checkedRunTasks])
+
+  useEffect(() => {
     if (!supabase) return
 
     let isMounted = true
@@ -311,6 +331,48 @@ function App() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') setDataStatus('Supabase realtime connected')
       })
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
+    async function loadRunTasks() {
+      const { data, error } = await client
+        .from('gatherkit_event_tasks')
+        .select('task_id,completed')
+        .eq('event_slug', eventSlug)
+
+      if (!isMounted) return
+
+      if (error) {
+        setDataStatus(`Supabase error: ${error.message}`)
+        return
+      }
+
+      const completedIds = (data as RunTaskRow[]).filter((row) => row.completed).map((row) => row.task_id)
+      setCheckedRunTasks(completedIds)
+    }
+
+    loadRunTasks()
+
+    const channel = client
+      .channel('event-run-tasks')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_event_tasks', filter: `event_slug=eq.${eventSlug}` },
+        () => {
+          loadRunTasks()
+        },
+      )
+      .subscribe()
 
     return () => {
       isMounted = false
@@ -402,7 +464,26 @@ function App() {
     window.setTimeout(() => setCopiedLabel(''), 1800)
   }
 
-  function toggleRunTask(taskId: string) {
+  async function toggleRunTask(taskId: string) {
+    const nextCompleted = !checkedRunTasks.includes(taskId)
+
+    if (supabase) {
+      const { error } = await supabase.from('gatherkit_event_tasks').upsert(
+        {
+          event_slug: eventSlug,
+          task_id: taskId,
+          completed: nextCompleted,
+        },
+        { onConflict: 'event_slug,task_id' },
+      )
+
+      if (error) {
+        setCopiedLabel(`Task sync error: ${error.message}`)
+        window.setTimeout(() => setCopiedLabel(''), 2600)
+      }
+      return
+    }
+
     setCheckedRunTasks((taskIds) =>
       taskIds.includes(taskId) ? taskIds.filter((id) => id !== taskId) : [...taskIds, taskId],
     )
