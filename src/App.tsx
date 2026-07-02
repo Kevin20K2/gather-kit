@@ -223,6 +223,7 @@ const defaultEventDraft: EventRow = {
 
 function App() {
   const [appMode, setAppMode] = useState<AppMode>('Organizer')
+  const [activeNavLabel, setActiveNavLabel] = useState('Dashboard')
   const [selectedEventSlug, setSelectedEventSlug] = useState(defaultEventDraft.slug)
   const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
@@ -715,6 +716,7 @@ function App() {
     setCheckedRunTasks([])
     setMessageLog([])
     setActiveStep('Details')
+    setActiveNavLabel('Dashboard')
     setAppMode('Organizer')
     setEventSaveState('saving')
     setEventSaveStatus('Creating new event...')
@@ -768,6 +770,7 @@ function App() {
     setActiveStep('Details')
     setEventSaveState('saved')
     setEventSaveStatus('Event selected')
+    setActiveNavLabel(navLabelForMode(nextMode))
     setAppMode(nextMode)
   }
 
@@ -906,6 +909,24 @@ function App() {
     persistMessage('Yes and maybe', body, attendingCount)
   }
 
+  function switchMode(mode: AppMode) {
+    setActiveNavLabel(navLabelForMode(mode))
+    setAppMode(mode)
+  }
+
+  function selectNavItem(label: string, mode: AppMode) {
+    setActiveNavLabel(label)
+    setAppMode(mode)
+  }
+
+  function navLabelForMode(mode: AppMode) {
+    if (mode === 'Events') return 'Events'
+    if (mode === 'Message Center') return 'Messages'
+    if (mode === 'Run Sheet') return 'Checklists'
+    if (mode === 'Neighbor RSVP') return 'Neighbors'
+    return 'Dashboard'
+  }
+
   function buildStarterEvent(slug: string): EventRow {
     const nextTemplate = eventTemplates[0]
 
@@ -967,9 +988,9 @@ function App() {
             const Icon = item.icon
             return (
               <button
-                className={appMode === item.mode ? 'nav-item active' : 'nav-item'}
+                className={activeNavLabel === item.label ? 'nav-item active' : 'nav-item'}
                 key={item.label}
-                onClick={() => setAppMode(item.mode)}
+                onClick={() => selectNavItem(item.label, item.mode)}
                 type="button"
               >
                 <Icon size={21} />
@@ -1003,7 +1024,7 @@ function App() {
               <button
                 className={appMode === mode ? 'selected' : ''}
                 key={mode}
-                onClick={() => setAppMode(mode)}
+                onClick={() => switchMode(mode)}
                 type="button"
               >
                 {mode === 'Organizer' ? (
