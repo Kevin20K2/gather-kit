@@ -42,6 +42,7 @@ type PlanningStep = 'Details' | 'Invite' | 'Review'
 type AppMode = 'Organizer' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP'
 type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type RsvpRow = {
   id?: string
   name: string
@@ -233,6 +234,7 @@ function App() {
   const [hostEmail, setHostEmail] = useState(defaultEventDraft.host_email)
   const [hostPhone, setHostPhone] = useState(defaultEventDraft.host_phone)
   const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
+  const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
   const [copiedLabel, setCopiedLabel] = useState('')
   const [neighborName, setNeighborName] = useState('Maya Chen')
@@ -353,8 +355,10 @@ function App() {
     try {
       applyEventRow(JSON.parse(storedEvent) as EventRow)
       setEventSaveStatus('Loaded local draft')
+      setEventSaveState('saved')
     } catch {
       setEventSaveStatus('Local draft could not be loaded')
+      setEventSaveState('error')
     }
   }, [])
 
@@ -375,6 +379,7 @@ function App() {
 
       if (error) {
         setEventSaveStatus(`Event sync error: ${error.message}`)
+        setEventSaveState('error')
         setDataStatus(`Supabase error: ${error.message}`)
         return
       }
@@ -382,6 +387,7 @@ function App() {
       if (data) {
         applyEventRow(data as EventRow)
         setEventSaveStatus('Event loaded from Supabase')
+        setEventSaveState('saved')
         return
       }
 
@@ -399,6 +405,7 @@ function App() {
           if (payload.new) {
             applyEventRow(payload.new as EventRow)
             setEventSaveStatus('Event updated live')
+            setEventSaveState('saved')
           }
         },
       )
@@ -603,11 +610,13 @@ function App() {
 
   async function saveEventDetails(successMessage = 'Event draft saved') {
     const eventDraft = buildEventDraft()
+    setEventSaveState('saving')
+    setEventSaveStatus('Saving event draft...')
 
     if (!supabase) {
       window.localStorage.setItem('gatherkit-event-draft', JSON.stringify(eventDraft))
       setEventSaveStatus('Event draft saved locally')
-      window.setTimeout(() => setEventSaveStatus('Ready to save'), 2200)
+      setEventSaveState('saved')
       return true
     }
 
@@ -626,6 +635,7 @@ function App() {
 
     if (hostError) {
       setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      setEventSaveState('error')
       return false
     }
 
@@ -639,11 +649,12 @@ function App() {
 
     if (error) {
       setEventSaveStatus(`Event sync error: ${error.message}`)
+      setEventSaveState('error')
       return false
     }
 
     setEventSaveStatus(successMessage)
-    window.setTimeout(() => setEventSaveStatus('Saved in Supabase'), 2200)
+    setEventSaveState('saved')
     return true
   }
 
@@ -1069,7 +1080,12 @@ function App() {
                       {completeTasks.length} of {template.tasks.length} planning checks are complete.
                     </p>
                   </div>
-                  <button className="primary-action" onClick={() => saveEventDetails('Event published in Supabase')} type="button">
+                  <button
+                    className="primary-action"
+                    disabled={eventSaveState === 'saving'}
+                    onClick={() => saveEventDetails('Event published in Supabase')}
+                    type="button"
+                  >
                     Publish Event
                     <ChevronRight size={21} />
                   </button>
@@ -1104,10 +1120,18 @@ function App() {
             )}
 
             <div className="save-row">
-              <div className="saved-state">
+              <div className={`saved-state ${eventSaveState}`}>
                 <CheckCircle2 />
                 <div>
-                  <strong>{eventSaveStatus.includes('error') ? 'Sync needs attention' : 'Event draft status'}</strong>
+                  <strong>
+                    {eventSaveState === 'saving'
+                      ? 'Saving draft'
+                      : eventSaveState === 'error'
+                        ? 'Sync needs attention'
+                        : eventSaveState === 'saved'
+                          ? 'Draft saved'
+                          : 'Event draft status'}
+                  </strong>
                   <span>
                     {copiedLabel
                       ? copiedLabel === 'Copy blocked'
@@ -1118,11 +1142,21 @@ function App() {
                 </div>
               </div>
               <div className="save-actions">
-                <button className="secondary-action" onClick={() => saveEventDetails()} type="button">
+                <button
+                  className="secondary-action"
+                  disabled={eventSaveState === 'saving'}
+                  onClick={() => saveEventDetails()}
+                  type="button"
+                >
                   <FileText size={20} />
-                  Save Draft
+                  {eventSaveState === 'saving' ? 'Saving...' : 'Save Draft'}
                 </button>
-                <button className="primary-action" onClick={goForward} type="button">
+                <button
+                  className="primary-action"
+                  disabled={eventSaveState === 'saving'}
+                  onClick={goForward}
+                  type="button"
+                >
                   {activeStep === 'Review' ? 'Create Event' : 'Continue'}
                   <ChevronRight size={21} />
                 </button>

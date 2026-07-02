@@ -679,16 +679,48 @@
   align-items: center;
   gap: 12px;
   color: #0a2442;
+  min-width: 230px;
 }
 
 .saved-state svg {
   color: #0697a0;
+  flex: 0 0 auto;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.saved-state.saved svg {
+  color: #087f5b;
+  transform: scale(1.04);
+}
+
+.saved-state.saving svg {
+  color: #0b84a5;
+}
+
+.saved-state.error svg {
+  color: #c2410c;
 }
 
 .saved-state span {
   display: block;
   color: #526b80;
   font-size: 14px;
+  line-height: 1.35;
+}
+
+.saved-state.saved span {
+  color: #087f5b;
+  font-weight: 750;
+}
+
+.saved-state.saving span {
+  color: #0b5f79;
+  font-weight: 750;
+}
+
+.saved-state.error span {
+  color: #b23b0b;
+  font-weight: 750;
 }
 
 .save-actions {
@@ -704,6 +736,12 @@
   justify-content: center;
   gap: 10px;
   padding: 0 20px;
+}
+
+.secondary-action:disabled,
+.primary-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .secondary-action {
