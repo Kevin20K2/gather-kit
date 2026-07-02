@@ -187,6 +187,57 @@
   color: #067e87;
 }
 
+.auth-pill {
+  min-height: 42px;
+  border: 1px solid #d9e3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+}
+
+.auth-pill input {
+  width: 150px;
+  min-height: 32px;
+  border: 0;
+  outline: 0;
+  color: #12233e;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.auth-pill span {
+  max-width: 190px;
+  color: #20364f;
+  font-size: 13px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 8px;
+}
+
+.auth-pill button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: #effbfb;
+  color: #078d96;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.auth-pill button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .mode-toggle {
   min-height: 42px;
   border: 1px solid #d9e3ed;
@@ -786,6 +837,71 @@
   padding: 28px;
   display: grid;
   align-items: start;
+}
+
+.auth-workspace {
+  min-height: calc(100svh - 96px);
+  padding: 28px;
+  display: grid;
+  align-items: start;
+}
+
+.auth-panel {
+  max-width: 920px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(10, 36, 66, 0.08);
+  padding: 30px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px 20px;
+  align-items: start;
+}
+
+.auth-panel h2 {
+  margin: 4px 0 10px;
+  color: #071936;
+  font-size: 31px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.auth-panel p {
+  max-width: 680px;
+  margin: 0;
+  color: #435d73;
+  line-height: 1.55;
+}
+
+.auth-form {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.auth-form input {
+  min-height: 52px;
+  border: 1px solid #d6e0ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #12233e;
+  font: inherit;
+  padding: 0 14px;
+}
+
+.auth-form span {
+  grid-column: 1 / -1;
+  color: #526b80;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.public-rsvp-action {
+  grid-column: 2;
+  justify-self: start;
 }
 
 .event-missing-panel {

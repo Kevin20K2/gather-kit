@@ -1,11 +1,15 @@
 create table if not exists public.gatherkit_hosts (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
   display_name text not null,
   email text not null unique,
   phone text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.gatherkit_hosts
+add column if not exists user_id uuid references auth.users(id) on delete set null;
 
 create table if not exists public.gatherkit_event_rsvps (
   id uuid primary key default gen_random_uuid(),

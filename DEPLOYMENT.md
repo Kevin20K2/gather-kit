@@ -19,6 +19,8 @@ Event-specific URLs are supported with paths like `/e/neighborhood-event` and `/
 
 If someone opens an unknown `/e/:slug` URL, GatherKit shows an event-not-found screen. From there the organizer can create a new event draft using that exact slug or return to the Events list.
 
+Organizer tools now require Supabase magic-link sign-in when Supabase is configured. Public RSVP remains open from `/e/:slug`.
+
 ## Next Supabase pass
 
 Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtime slice creates:
@@ -32,12 +34,13 @@ Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtim
 ## Roadmap
 
 - Extend the multi-event model into true multiple hosts and host-owned events. Each host should be able to create and manage their own events, while neighbors can RSVP and view the appropriate public event page.
-- Add real host identity/permissions before production use. The current prototype has permissive public policies for easy testing; production should use Supabase Auth and row-level security policies that allow hosts to update only their own events.
-- Add separate public RSVP and protected organizer routes once authentication is introduced.
+- Tighten row-level security so hosts can update only their own events once the auth flow feels right.
 
 Then set these Vercel environment variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+
+In Supabase Auth, keep the Email provider enabled and add the Vercel deployment URL to the allowed redirect URLs so magic links can return to the app.
 
 After setting env vars, redeploy the Vercel project.

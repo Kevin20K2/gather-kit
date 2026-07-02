@@ -45,6 +45,10 @@ type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type EventLookupState = 'loading' | 'found' | 'missing'
+type AuthUser = {
+  id: string
+  email?: string
+}
 type RsvpRow = {
   id?: string
   name: string
@@ -250,12 +254,29 @@ function updateEventUrl(slug: string, replace = false) {
   window.history.pushState({ eventSlug: slug }, '', nextUrl)
 }
 
+function getInitialMode(): AppMode {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/e/')) return 'Neighbor RSVP'
+  return 'Organizer'
+}
+
+function navLabelForInitialMode(mode: AppMode) {
+  if (mode === 'Events') return 'Events'
+  if (mode === 'Message Center') return 'Messages'
+  if (mode === 'Run Sheet') return 'Checklists'
+  if (mode === 'Neighbor RSVP') return 'Neighbors'
+  return 'Dashboard'
+}
+
 function App() {
-  const [appMode, setAppMode] = useState<AppMode>('Organizer')
-  const [activeNavLabel, setActiveNavLabel] = useState('Dashboard')
+  const [appMode, setAppMode] = useState<AppMode>(getInitialMode)
+  const [activeNavLabel, setActiveNavLabel] = useState(() => navLabelForInitialMode(getInitialMode()))
   const [selectedEventSlug, setSelectedEventSlug] = useState(getEventSlugFromPath)
   const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
   const [eventLookupState, setEventLookupState] = useState<EventLookupState>('loading')
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'Checking host session...' : 'Local demo mode')
+  const [authSending, setAuthSending] = useState(false)
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
   const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
@@ -335,6 +356,10 @@ function App() {
         : messageAudience === 'Volunteer roles'
           ? `Thank you for volunteering for ${eventName}. Please arrive 20 minutes early so we can get set up together.`
           : `Quick update for ${eventName}: we are set for ${date} at ${location}. ${bringNote}`
+  const isHostSignedIn = !isSupabaseConfigured || Boolean(authUser)
+  const isHostMode = appMode !== 'Neighbor RSVP'
+  const shouldShowAuthGate = isHostMode && !isHostSignedIn
+  const hostEmailLabel = authUser?.email ?? 'Host'
 
   useEffect(() => {
     updateEventUrl(selectedEventSlug, true)
@@ -348,6 +373,45 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
+    async function loadSession() {
+      const { data } = await client.auth.getSession()
+      if (!isMounted) return
+
+      const user = data.session?.user
+      setAuthUser(user ? { id: user.id, email: user.email } : null)
+      setAuthEmail(user?.email ?? '')
+      setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
+
+      if (user?.email && hostEmail === defaultEventDraft.host_email) {
+        setHostEmail(user.email)
+      }
+    }
+
+    loadSession()
+
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user
+      setAuthUser(user ? { id: user.id, email: user.email } : null)
+      setAuthEmail(user?.email ?? '')
+      setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
+
+      if (user?.email && hostEmail === defaultEventDraft.host_email) {
+        setHostEmail(user.email)
+      }
+    })
+
+    return () => {
+      isMounted = false
+      data.subscription.unsubscribe()
+    }
+  }, [hostEmail])
 
   useEffect(() => {
     if (!isSupabaseConfigured && localDataReady) {
@@ -414,14 +478,20 @@ function App() {
 
   useEffect(() => {
     if (!supabase) return
+    if (!authUser?.email) {
+      setEventRows([defaultEventDraft])
+      return
+    }
 
     let isMounted = true
     const client = supabase
+    const hostEmailFilter = authUser.email
 
     async function loadEvents() {
       const { data, error } = await client
         .from('gatherkit_events')
         .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
+        .eq('host_email', hostEmailFilter)
         .order('updated_at', { ascending: false })
 
       if (!isMounted) return
@@ -462,7 +532,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [])
+  }, [authUser?.email])
 
   useEffect(() => {
     if (!supabase) return
@@ -710,11 +780,16 @@ function App() {
       bring_note: bringNote.trim() || defaultEventDraft.bring_note,
       host_name: hostName.trim() || defaultEventDraft.host_name,
       host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
-      host_email: hostEmail.trim() || defaultEventDraft.host_email,
+      host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
     }
   }
 
   async function saveEventDetails(successMessage = 'Event draft saved') {
+    if (isSupabaseConfigured && !authUser) {
+      setAuthStatus('Sign in as a host to save event drafts.')
+      return false
+    }
+
     const eventDraft = buildEventDraft()
     setEventSaveState('saving')
     setEventSaveStatus('Saving event draft...')
@@ -734,6 +809,7 @@ function App() {
       .from('gatherkit_hosts')
       .upsert(
         {
+          user_id: authUser?.id,
           display_name: eventDraft.host_name,
           email: eventDraft.host_email,
           phone: eventDraft.host_phone,
@@ -770,6 +846,13 @@ function App() {
   }
 
   async function createNewEvent(slugOverride?: string) {
+    if (isSupabaseConfigured && !authUser) {
+      setAuthStatus('Sign in as a host to create events.')
+      setAppMode('Organizer')
+      setActiveNavLabel('Dashboard')
+      return
+    }
+
     const slug = slugOverride ?? `event-${Date.now().toString(36)}`
     const draft = buildStarterEvent(slug)
 
@@ -801,6 +884,7 @@ function App() {
       .from('gatherkit_hosts')
       .upsert(
         {
+          user_id: authUser?.id,
           display_name: draft.host_name,
           email: draft.host_email,
           phone: draft.host_phone,
@@ -993,6 +1077,37 @@ function App() {
     setAppMode(mode)
   }
 
+  async function sendMagicLink() {
+    const email = authEmail.trim()
+    if (!email || !supabase) return
+
+    setAuthSending(true)
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.href,
+      },
+    })
+    setAuthSending(false)
+
+    if (error) {
+      setAuthStatus(`Sign-in error: ${error.message}`)
+      return
+    }
+
+    setAuthStatus(`Magic link sent to ${email}`)
+  }
+
+  async function signOutHost() {
+    if (!supabase) return
+
+    await supabase.auth.signOut()
+    setAuthUser(null)
+    setAuthStatus('Signed out')
+    setAppMode('Neighbor RSVP')
+    setActiveNavLabel('Neighbors')
+  }
+
   function navLabelForMode(mode: AppMode) {
     if (mode === 'Events') return 'Events'
     if (mode === 'Message Center') return 'Messages'
@@ -1015,7 +1130,7 @@ function App() {
       bring_note: nextTemplate.bringNote,
       host_name: hostName.trim() || defaultEventDraft.host_name,
       host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
-      host_email: hostEmail.trim() || defaultEventDraft.host_email,
+      host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
     }
   }
 
@@ -1093,6 +1208,28 @@ function App() {
           <div className={isSupabaseConfigured ? 'data-pill connected' : 'data-pill'}>
             {dataStatus}
           </div>
+          {isSupabaseConfigured && (
+            <div className="auth-pill">
+              {authUser ? (
+                <>
+                  <span>{hostEmailLabel}</span>
+                  <button onClick={signOutHost} type="button">Sign out</button>
+                </>
+              ) : (
+                <>
+                  <input
+                    aria-label="Host email"
+                    placeholder="host@email.com"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                  />
+                  <button disabled={authSending} onClick={sendMagicLink} type="button">
+                    {authSending ? 'Sending...' : 'Sign in'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="mode-toggle" aria-label="View mode">
             {(['Organizer', 'Message Center', 'Run Sheet', 'Neighbor RSVP'] as AppMode[]).map((mode) => (
               <button
@@ -1127,7 +1264,37 @@ function App() {
           </div>
         </header>
 
-        {eventLookupState === 'missing' && appMode !== 'Events' ? (
+        {shouldShowAuthGate ? (
+          <section className="auth-workspace" aria-label="Host sign in">
+            <div className="auth-panel">
+              <div className="heading-icon">
+                <UserRoundCheck />
+              </div>
+              <div>
+                <span className="eyebrow">Host Access</span>
+                <h2>Sign in to manage this event.</h2>
+                <p>Neighbors can still RSVP from the public event link. Organizer tools require a host magic link.</p>
+              </div>
+              <div className="auth-form">
+                <input
+                  aria-label="Host email"
+                  placeholder="host@email.com"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                />
+                <button className="primary-action" disabled={authSending} onClick={sendMagicLink} type="button">
+                  {authSending ? 'Sending...' : 'Send Magic Link'}
+                  <Mail size={19} />
+                </button>
+                <span>{authStatus}</span>
+              </div>
+              <button className="secondary-action public-rsvp-action" onClick={() => switchMode('Neighbor RSVP')} type="button">
+                View Public RSVP
+                <ChevronRight size={19} />
+              </button>
+            </div>
+          </section>
+        ) : eventLookupState === 'missing' && appMode !== 'Events' ? (
           <section className="event-missing-workspace" aria-label="Event not found">
             <div className="event-missing-panel">
               <div className="heading-icon">
