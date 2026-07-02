@@ -52,10 +52,19 @@ type RsvpRow = {
 }
 
 type MessageLogItem = {
+  id?: string
   audience: MessageAudience
   body: string
   count: number
   sentAt: string
+}
+
+type MessageRow = {
+  id: string
+  audience: MessageAudience
+  body: string
+  recipient_count: number
+  created_at: string
 }
 
 type RunTaskRow = {
@@ -203,7 +212,16 @@ function App() {
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
-  const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
+  const [messageLog, setMessageLog] = useState<MessageLogItem[]>(() => {
+    const storedMessages = window.localStorage.getItem('gatherkit-message-log')
+    if (!storedMessages) return []
+
+    try {
+      return JSON.parse(storedMessages) as MessageLogItem[]
+    } catch {
+      return []
+    }
+  })
   const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Connecting to Supabase...' : 'Local demo mode')
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(() => {
     const storedTasks = window.localStorage.getItem('gatherkit-run-tasks')
@@ -290,6 +308,12 @@ function App() {
   }, [checkedRunTasks])
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      window.localStorage.setItem('gatherkit-message-log', JSON.stringify(messageLog))
+    }
+  }, [messageLog])
+
+  useEffect(() => {
     if (!supabase) return
 
     let isMounted = true
@@ -331,6 +355,57 @@ function App() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') setDataStatus('Supabase realtime connected')
       })
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
+    async function loadMessages() {
+      const { data, error } = await client
+        .from('gatherkit_event_messages')
+        .select('id,audience,body,recipient_count,created_at')
+        .eq('event_slug', eventSlug)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!isMounted) return
+
+      if (error) {
+        setDataStatus(`Supabase error: ${error.message}`)
+        return
+      }
+
+      setMessageLog(
+        (data as MessageRow[]).map((row) => ({
+          id: row.id,
+          audience: row.audience,
+          body: row.body,
+          count: row.recipient_count,
+          sentAt: formatMessageTime(row.created_at),
+        })),
+      )
+    }
+
+    loadMessages()
+
+    const channel = client
+      .channel('event-messages')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_event_messages', filter: `event_slug=eq.${eventSlug}` },
+        () => {
+          loadMessages()
+        },
+      )
+      .subscribe()
 
     return () => {
       isMounted = false
@@ -408,6 +483,15 @@ function App() {
     if (activeStep === 'Invite') setActiveStep('Review')
   }
 
+  function formatMessageTime(value: string) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(value))
+  }
+
   async function submitRsvp() {
     const nextRow: RsvpRow = {
       name: neighborName.trim() || 'Neighbor',
@@ -447,25 +531,49 @@ function App() {
     window.setTimeout(() => setSubmittedMessage(''), 2400)
   }
 
+  async function persistMessage(audience: MessageAudience, body: string, count: number) {
+    const nextMessage: MessageLogItem = {
+      audience,
+      body,
+      count,
+      sentAt: 'just now',
+    }
+
+    setMessageLog((items) => [nextMessage, ...items])
+
+    if (supabase) {
+      const { error } = await supabase.from('gatherkit_event_messages').insert({
+        event_slug: eventSlug,
+        audience,
+        body,
+        recipient_count: count,
+      })
+
+      if (error) {
+        setMessageLog((items) => items.filter((item) => item !== nextMessage))
+        setCopiedLabel(`Message sync error: ${error.message}`)
+        window.setTimeout(() => setCopiedLabel(''), 2600)
+        return
+      }
+    }
+
+    setCopiedLabel(`Message sent to ${count}`)
+    window.setTimeout(() => setCopiedLabel(''), 1800)
+  }
+
   function sendMessage() {
     const trimmedBody = messageBody.trim()
     if (!trimmedBody) return
 
-    setMessageLog((items) => [
-      {
-        audience: messageAudience,
-        body: trimmedBody,
-        count: audienceCounts[messageAudience],
-        sentAt: 'just now',
-      },
-      ...items,
-    ])
-    setCopiedLabel(`Message sent to ${audienceCounts[messageAudience]}`)
-    window.setTimeout(() => setCopiedLabel(''), 1800)
+    persistMessage(messageAudience, trimmedBody, audienceCounts[messageAudience])
   }
 
   async function toggleRunTask(taskId: string) {
     const nextCompleted = !checkedRunTasks.includes(taskId)
+
+    setCheckedRunTasks((taskIds) =>
+      nextCompleted ? [...taskIds, taskId] : taskIds.filter((id) => id !== taskId),
+    )
 
     if (supabase) {
       const { error } = await supabase.from('gatherkit_event_tasks').upsert(
@@ -478,29 +586,18 @@ function App() {
       )
 
       if (error) {
+        setCheckedRunTasks((taskIds) =>
+          nextCompleted ? taskIds.filter((id) => id !== taskId) : [...taskIds, taskId],
+        )
         setCopiedLabel(`Task sync error: ${error.message}`)
         window.setTimeout(() => setCopiedLabel(''), 2600)
       }
       return
     }
-
-    setCheckedRunTasks((taskIds) =>
-      taskIds.includes(taskId) ? taskIds.filter((id) => id !== taskId) : [...taskIds, taskId],
-    )
   }
 
   function sendRunSheetUpdate(body: string) {
-    setMessageLog((items) => [
-      {
-        audience: 'Yes and maybe',
-        body,
-        count: attendingCount,
-        sentAt: 'just now',
-      },
-      ...items,
-    ])
-    setCopiedLabel(`Update sent to ${attendingCount}`)
-    window.setTimeout(() => setCopiedLabel(''), 1800)
+    persistMessage('Yes and maybe', body, attendingCount)
   }
 
   function templateSafeDefaultSupply() {

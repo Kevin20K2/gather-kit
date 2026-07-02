@@ -89,6 +89,30 @@ for update
 using (true)
 with check (true);
 
+create table if not exists public.gatherkit_event_messages (
+  id uuid primary key default gen_random_uuid(),
+  event_slug text not null,
+  audience text not null,
+  body text not null,
+  recipient_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.gatherkit_event_messages enable row level security;
+
+drop policy if exists "gatherkit_event_messages_public_read" on public.gatherkit_event_messages;
+drop policy if exists "gatherkit_event_messages_public_insert" on public.gatherkit_event_messages;
+
+create policy "gatherkit_event_messages_public_read"
+on public.gatherkit_event_messages
+for select
+using (true);
+
+create policy "gatherkit_event_messages_public_insert"
+on public.gatherkit_event_messages
+for insert
+with check (true);
+
 do $$
 begin
   if not exists (
@@ -109,5 +133,15 @@ begin
       and tablename = 'gatherkit_event_tasks'
   ) then
     alter publication supabase_realtime add table public.gatherkit_event_tasks;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_event_messages'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_event_messages;
   end if;
 end $$;

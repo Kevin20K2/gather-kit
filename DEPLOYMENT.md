@@ -11,7 +11,7 @@ This is a Vite + React prototype for GatherKit.
 
 ## Current data behavior
 
-This prototype uses Supabase realtime for RSVPs and Run Sheet task checkoffs when the Vercel environment variables are present. If they are missing, it falls back to browser `localStorage` for demo use.
+This prototype uses Supabase realtime for RSVPs, Run Sheet task checkoffs, and Message Center sent updates when the Vercel environment variables are present. If they are missing, it falls back to browser `localStorage` for demo use.
 
 ## Next Supabase pass
 
@@ -19,6 +19,7 @@ Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtim
 
 - `gatherkit_event_rsvps`
 - `gatherkit_event_tasks`
+- `gatherkit_event_messages`
 
 Then set these Vercel environment variables:
 
