@@ -72,6 +72,20 @@ type RunTaskRow = {
   completed: boolean
 }
 
+type EventRow = {
+  slug: string
+  event_type: EventType
+  name: string
+  date_label: string
+  time_label: string
+  location: string
+  rsvp_deadline: string
+  bring_note: string
+  host_name: string
+  host_phone: string
+  host_email: string
+}
+
 type EventTemplate = {
   label: EventType
   duration: string
@@ -191,17 +205,34 @@ const initialRsvpRows: RsvpRow[] = [
 ]
 
 const eventSlug = 'neighborhood-event'
+const defaultEventDraft: EventRow = {
+  slug: eventSlug,
+  event_type: 'Happy Hour',
+  name: 'Happy Hour',
+  date_label: 'Saturday, May 31, 2025',
+  time_label: eventTemplates[0].duration,
+  location: eventTemplates[0].location,
+  rsvp_deadline: 'Wednesday, May 28, 2025',
+  bring_note: eventTemplates[0].bringNote,
+  host_name: 'Jordan Taylor',
+  host_phone: '(555) 123-4567',
+  host_email: 'jordan.taylor@email.com',
+}
 
 function App() {
   const [appMode, setAppMode] = useState<AppMode>('Organizer')
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
-  const [eventType, setEventType] = useState<EventType>('Happy Hour')
-  const [eventName, setEventName] = useState('Happy Hour')
-  const [date, setDate] = useState('Saturday, May 31, 2025')
-  const [rsvpDate, setRsvpDate] = useState('Wednesday, May 28, 2025')
-  const [hostName, setHostName] = useState('Jordan Taylor')
-  const [hostEmail, setHostEmail] = useState('jordan.taylor@email.com')
-  const [hostPhone, setHostPhone] = useState('(555) 123-4567')
+  const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
+  const [eventName, setEventName] = useState(defaultEventDraft.name)
+  const [date, setDate] = useState(defaultEventDraft.date_label)
+  const [time, setTime] = useState(defaultEventDraft.time_label)
+  const [location, setLocation] = useState(defaultEventDraft.location)
+  const [rsvpDate, setRsvpDate] = useState(defaultEventDraft.rsvp_deadline)
+  const [bringNote, setBringNote] = useState(defaultEventDraft.bring_note)
+  const [hostName, setHostName] = useState(defaultEventDraft.host_name)
+  const [hostEmail, setHostEmail] = useState(defaultEventDraft.host_email)
+  const [hostPhone, setHostPhone] = useState(defaultEventDraft.host_phone)
+  const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
   const [copiedLabel, setCopiedLabel] = useState('')
   const [neighborName, setNeighborName] = useState('Maya Chen')
@@ -251,9 +282,9 @@ function App() {
 
   const completeTasks = template.tasks.slice(0, 3)
   const openTasks = template.tasks.slice(3)
-  const inviteDraft = `${eventName} is happening ${date} from ${template.duration} at ${template.location}. ${template.description} RSVP by ${rsvpDate}. ${template.bringNote}`
-  const reminderDraft = `Quick reminder: ${eventName} is coming up at ${template.location}. ${template.bringNote} Reply with questions or update your RSVP before ${rsvpDate}.`
-  const flyerDraft = `${eventName}\n${date}\n${template.duration}\n${template.location}\n${template.bringNote}`
+  const inviteDraft = `${eventName} is happening ${date} from ${time} at ${location}. ${template.description} RSVP by ${rsvpDate}. ${bringNote}`
+  const reminderDraft = `Quick reminder: ${eventName} is coming up at ${location}. ${bringNote} Reply with questions or update your RSVP before ${rsvpDate}.`
+  const flyerDraft = `${eventName}\n${date}\n${time}\n${location}\n${bringNote}`
   const rsvpLink = 'gatherkit.local/e/neighborhood-event'
   const readinessScore = Math.round((completeTasks.length / template.tasks.length) * 100)
   const yesCount = rsvpRows.filter((row) => row.status === 'Yes').length
@@ -277,11 +308,11 @@ function App() {
   }))
   const missingRoles = assignedRoles.filter((item) => !item.owner)
   const runSheetTasks = [
-    { id: 'confirm-location', time: '3:30 PM', task: `Confirm access to ${template.location}`, owner: hostName },
+    { id: 'confirm-location', time: '3:30 PM', task: `Confirm access to ${location}`, owner: hostName },
     { id: 'setup-tables', time: '4:15 PM', task: 'Set up tables, chairs, and supply station', owner: assignedRoles[0]?.owner || hostName },
     { id: 'post-welcome-sign', time: '4:30 PM', task: 'Post welcome sign and RSVP QR code', owner: hostName },
     { id: 'supply-check', time: '4:45 PM', task: 'Check off promised supplies as they arrive', owner: assignedRoles[1]?.owner || 'Supply helper' },
-    { id: 'greet-neighbors', time: template.duration.split(' - ')[0], task: 'Greet neighbors and point out signup table', owner: assignedRoles[0]?.owner || 'Greeter needed' },
+    { id: 'greet-neighbors', time: time.split(' - ')[0], task: 'Greet neighbors and point out signup table', owner: assignedRoles[0]?.owner || 'Greeter needed' },
     { id: 'last-call', time: '7:10 PM', task: 'Send cleanup and final-call reminder', owner: hostName },
     { id: 'cleanup', time: '7:30 PM', task: 'Reset space, collect trash, and pack remaining supplies', owner: assignedRoles.at(-1)?.owner || 'Cleanup helper needed' },
   ]
@@ -290,10 +321,10 @@ function App() {
     messageAudience === 'Needs RSVP'
       ? `Hi neighbor, RSVP is due ${rsvpDate} for ${eventName}. We would love to know if you can make it.`
       : messageAudience === 'Supply helpers'
-        ? `Thank you for helping with supplies for ${eventName}. Please bring your item to ${template.location} by ${template.duration.split(' - ')[0]}.`
+        ? `Thank you for helping with supplies for ${eventName}. Please bring your item to ${location} by ${time.split(' - ')[0]}.`
         : messageAudience === 'Volunteer roles'
           ? `Thank you for volunteering for ${eventName}. Please arrive 20 minutes early so we can get set up together.`
-          : `Quick update for ${eventName}: we are set for ${date} at ${template.location}. ${template.bringNote}`
+          : `Quick update for ${eventName}: we are set for ${date} at ${location}. ${bringNote}`
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -312,6 +343,72 @@ function App() {
       window.localStorage.setItem('gatherkit-message-log', JSON.stringify(messageLog))
     }
   }, [messageLog])
+
+  useEffect(() => {
+    if (supabase) return
+
+    const storedEvent = window.localStorage.getItem('gatherkit-event-draft')
+    if (!storedEvent) return
+
+    try {
+      applyEventRow(JSON.parse(storedEvent) as EventRow)
+      setEventSaveStatus('Loaded local draft')
+    } catch {
+      setEventSaveStatus('Local draft could not be loaded')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
+    async function loadEvent() {
+      const { data, error } = await client
+        .from('gatherkit_events')
+        .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
+        .eq('slug', eventSlug)
+        .maybeSingle()
+
+      if (!isMounted) return
+
+      if (error) {
+        setEventSaveStatus(`Event sync error: ${error.message}`)
+        setDataStatus(`Supabase error: ${error.message}`)
+        return
+      }
+
+      if (data) {
+        applyEventRow(data as EventRow)
+        setEventSaveStatus('Event loaded from Supabase')
+        return
+      }
+
+      await saveEventDetails('Event draft created in Supabase')
+    }
+
+    loadEvent()
+
+    const channel = client
+      .channel('event-details')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_events', filter: `slug=eq.${eventSlug}` },
+        (payload) => {
+          if (payload.new) {
+            applyEventRow(payload.new as EventRow)
+            setEventSaveStatus('Event updated live')
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [])
 
   useEffect(() => {
     if (!supabase) return
@@ -463,9 +560,91 @@ function App() {
     const nextTemplate = eventTemplates.find((item) => item.label === nextType) ?? eventTemplates[0]
     setEventType(nextType)
     setEventName(nextTemplate.headline)
+    setTime(nextTemplate.duration)
+    setLocation(nextTemplate.location)
+    setBringNote(nextTemplate.bringNote)
     setSelectedRoles(nextTemplate.roles.slice(0, 2))
     setPledgedSupply(nextTemplate.supplies[0])
     setPledgedRole('')
+  }
+
+  function applyEventRow(row: EventRow) {
+    const supportedType = eventTemplates.some((item) => item.label === row.event_type)
+      ? row.event_type
+      : defaultEventDraft.event_type
+
+    setEventType(supportedType)
+    setEventName(row.name || defaultEventDraft.name)
+    setDate(row.date_label || defaultEventDraft.date_label)
+    setTime(row.time_label || defaultEventDraft.time_label)
+    setLocation(row.location || defaultEventDraft.location)
+    setRsvpDate(row.rsvp_deadline || defaultEventDraft.rsvp_deadline)
+    setBringNote(row.bring_note || defaultEventDraft.bring_note)
+    setHostName(row.host_name || defaultEventDraft.host_name)
+    setHostPhone(row.host_phone || defaultEventDraft.host_phone)
+    setHostEmail(row.host_email || defaultEventDraft.host_email)
+  }
+
+  function buildEventDraft(): EventRow {
+    return {
+      slug: eventSlug,
+      event_type: eventType,
+      name: eventName.trim() || defaultEventDraft.name,
+      date_label: date.trim() || defaultEventDraft.date_label,
+      time_label: time.trim() || defaultEventDraft.time_label,
+      location: location.trim() || defaultEventDraft.location,
+      rsvp_deadline: rsvpDate.trim() || defaultEventDraft.rsvp_deadline,
+      bring_note: bringNote.trim() || defaultEventDraft.bring_note,
+      host_name: hostName.trim() || defaultEventDraft.host_name,
+      host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
+      host_email: hostEmail.trim() || defaultEventDraft.host_email,
+    }
+  }
+
+  async function saveEventDetails(successMessage = 'Event draft saved') {
+    const eventDraft = buildEventDraft()
+
+    if (!supabase) {
+      window.localStorage.setItem('gatherkit-event-draft', JSON.stringify(eventDraft))
+      setEventSaveStatus('Event draft saved locally')
+      window.setTimeout(() => setEventSaveStatus('Ready to save'), 2200)
+      return true
+    }
+
+    const { data: host, error: hostError } = await supabase
+      .from('gatherkit_hosts')
+      .upsert(
+        {
+          display_name: eventDraft.host_name,
+          email: eventDraft.host_email,
+          phone: eventDraft.host_phone,
+        },
+        { onConflict: 'email' },
+      )
+      .select('id')
+      .single()
+
+    if (hostError) {
+      setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      return false
+    }
+
+    const { error } = await supabase.from('gatherkit_events').upsert(
+      {
+        host_id: host.id,
+        ...eventDraft,
+      },
+      { onConflict: 'slug' },
+    )
+
+    if (error) {
+      setEventSaveStatus(`Event sync error: ${error.message}`)
+      return false
+    }
+
+    setEventSaveStatus(successMessage)
+    window.setTimeout(() => setEventSaveStatus('Saved in Supabase'), 2200)
+    return true
   }
 
   async function copyText(label: string, text: string) {
@@ -478,7 +657,10 @@ function App() {
     window.setTimeout(() => setCopiedLabel(''), 1600)
   }
 
-  function goForward() {
+  async function goForward() {
+    const saved = await saveEventDetails(activeStep === 'Review' ? 'Event saved and ready' : 'Event draft saved')
+    if (!saved) return
+
     if (activeStep === 'Details') setActiveStep('Invite')
     if (activeStep === 'Invite') setActiveStep('Review')
   }
@@ -760,7 +942,7 @@ function App() {
                     <span>Time</span>
                     <div className="input-shell">
                       <Clock3 size={22} />
-                      <input readOnly value={template.duration} />
+                      <input value={time} onChange={(event) => setTime(event.target.value)} />
                     </div>
                   </label>
 
@@ -768,7 +950,7 @@ function App() {
                     <span>Location</span>
                     <div className="input-shell">
                       <MapPin size={22} />
-                      <input readOnly value={template.location} />
+                      <input value={location} onChange={(event) => setLocation(event.target.value)} />
                       <ChevronDown size={18} />
                     </div>
                   </label>
@@ -785,7 +967,7 @@ function App() {
                     <span>Bring Note</span>
                     <div className="input-shell">
                       <Gift size={22} />
-                      <input readOnly value={template.bringNote} />
+                      <input value={bringNote} onChange={(event) => setBringNote(event.target.value)} />
                     </div>
                   </label>
                 </div>
@@ -887,7 +1069,7 @@ function App() {
                       {completeTasks.length} of {template.tasks.length} planning checks are complete.
                     </p>
                   </div>
-                  <button className="primary-action" type="button">
+                  <button className="primary-action" onClick={() => saveEventDetails('Event published in Supabase')} type="button">
                     Publish Event
                     <ChevronRight size={21} />
                   </button>
@@ -925,18 +1107,18 @@ function App() {
               <div className="saved-state">
                 <CheckCircle2 />
                 <div>
-                  <strong>All changes saved</strong>
+                  <strong>{eventSaveStatus.includes('error') ? 'Sync needs attention' : 'Event draft status'}</strong>
                   <span>
                     {copiedLabel
                       ? copiedLabel === 'Copy blocked'
                         ? copiedLabel
                         : `${copiedLabel} copied`
-                      : '2 minutes ago'}
+                      : eventSaveStatus}
                   </span>
                 </div>
               </div>
               <div className="save-actions">
-                <button className="secondary-action" type="button">
+                <button className="secondary-action" onClick={() => saveEventDetails()} type="button">
                   <FileText size={20} />
                   Save Draft
                 </button>
@@ -964,11 +1146,11 @@ function App() {
                   </p>
                   <p>
                     <Clock3 size={15} />
-                    {template.duration}
+                    {time}
                   </p>
                   <p>
                     <MapPin size={15} />
-                    {template.location}
+                    {location}
                   </p>
                 </div>
               </div>
@@ -1147,7 +1329,7 @@ function App() {
               <div>
                 <span className="eyebrow">Day-Of Run Sheet</span>
                 <h2>{eventName}</h2>
-                <p>{date} at {template.location} / {template.duration}</p>
+                <p>{date} at {location} / {time}</p>
               </div>
               <div className="run-progress">
                 <strong>{checkedRunTasks.length}/{runSheetTasks.length}</strong>
@@ -1162,7 +1344,7 @@ function App() {
               </article>
               <button
                 className="secondary-action"
-                onClick={() => sendRunSheetUpdate(`Setup for ${eventName} starts soon at ${template.location}. Please check in with ${hostName} when you arrive.`)}
+                onClick={() => sendRunSheetUpdate(`Setup for ${eventName} starts soon at ${location}. Please check in with ${hostName} when you arrive.`)}
                 type="button"
               >
                 <Send size={18} />
@@ -1170,7 +1352,7 @@ function App() {
               </button>
               <button
                 className="primary-action"
-                onClick={() => sendRunSheetUpdate(`Thanks for joining ${eventName}. Please help reset ${template.location} before you leave.`)}
+                onClick={() => sendRunSheetUpdate(`Thanks for joining ${eventName}. Please help reset ${location} before you leave.`)}
                 type="button"
               >
                 Cleanup Update
@@ -1245,8 +1427,8 @@ function App() {
                 <p>{template.description}</p>
                 <div className="neighbor-meta">
                   <span><CalendarDays size={16} /> {date}</span>
-                  <span><Clock3 size={16} /> {template.duration}</span>
-                  <span><MapPin size={16} /> {template.location}</span>
+                  <span><Clock3 size={16} /> {time}</span>
+                  <span><MapPin size={16} /> {location}</span>
                 </div>
               </div>
             </div>

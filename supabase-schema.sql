@@ -1,3 +1,12 @@
+create table if not exists public.gatherkit_hosts (
+  id uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  email text not null unique,
+  phone text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.gatherkit_event_rsvps (
   id uuid primary key default gen_random_uuid(),
   event_slug text not null,
@@ -27,6 +36,82 @@ create trigger gatherkit_event_rsvps_set_updated_at
 before update on public.gatherkit_event_rsvps
 for each row
 execute function public.set_updated_at();
+
+drop trigger if exists gatherkit_hosts_set_updated_at on public.gatherkit_hosts;
+
+create trigger gatherkit_hosts_set_updated_at
+before update on public.gatherkit_hosts
+for each row
+execute function public.set_updated_at();
+
+alter table public.gatherkit_hosts enable row level security;
+
+drop policy if exists "gatherkit_hosts_public_read" on public.gatherkit_hosts;
+drop policy if exists "gatherkit_hosts_public_insert" on public.gatherkit_hosts;
+drop policy if exists "gatherkit_hosts_public_update" on public.gatherkit_hosts;
+
+create policy "gatherkit_hosts_public_read"
+on public.gatherkit_hosts
+for select
+using (true);
+
+create policy "gatherkit_hosts_public_insert"
+on public.gatherkit_hosts
+for insert
+with check (true);
+
+create policy "gatherkit_hosts_public_update"
+on public.gatherkit_hosts
+for update
+using (true)
+with check (true);
+
+create table if not exists public.gatherkit_events (
+  id uuid primary key default gen_random_uuid(),
+  host_id uuid references public.gatherkit_hosts(id) on delete set null,
+  slug text not null unique,
+  event_type text not null,
+  name text not null,
+  date_label text not null,
+  time_label text not null,
+  location text not null,
+  rsvp_deadline text not null,
+  bring_note text not null,
+  host_name text not null,
+  host_phone text not null default '',
+  host_email text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists gatherkit_events_set_updated_at on public.gatherkit_events;
+
+create trigger gatherkit_events_set_updated_at
+before update on public.gatherkit_events
+for each row
+execute function public.set_updated_at();
+
+alter table public.gatherkit_events enable row level security;
+
+drop policy if exists "gatherkit_events_public_read" on public.gatherkit_events;
+drop policy if exists "gatherkit_events_public_insert" on public.gatherkit_events;
+drop policy if exists "gatherkit_events_public_update" on public.gatherkit_events;
+
+create policy "gatherkit_events_public_read"
+on public.gatherkit_events
+for select
+using (true);
+
+create policy "gatherkit_events_public_insert"
+on public.gatherkit_events
+for insert
+with check (true);
+
+create policy "gatherkit_events_public_update"
+on public.gatherkit_events
+for update
+using (true)
+with check (true);
 
 alter table public.gatherkit_event_rsvps enable row level security;
 
@@ -115,6 +200,26 @@ with check (true);
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_hosts'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_hosts;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_events'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_events;
+  end if;
+
   if not exists (
     select 1
     from pg_publication_tables
