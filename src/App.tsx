@@ -18,6 +18,7 @@ import {
   Menu,
   MessageSquare,
   PenLine,
+  PlusCircle,
   Send,
   Settings,
   Sparkles,
@@ -39,7 +40,7 @@ type EventType =
   | 'Custom'
 
 type PlanningStep = 'Details' | 'Invite' | 'Review'
-type AppMode = 'Organizer' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP'
+type AppMode = 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP'
 type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -190,12 +191,12 @@ const eventTemplates: EventTemplate[] = [
 const planningSteps: PlanningStep[] = ['Details', 'Invite', 'Review']
 
 const navItems = [
-  { label: 'Dashboard', icon: Home },
-  { label: 'Events', icon: CalendarDays },
-  { label: 'Neighbors', icon: Users },
-  { label: 'Messages', icon: MessageSquare },
-  { label: 'Checklists', icon: ClipboardList },
-  { label: 'Settings', icon: Settings },
+  { label: 'Dashboard', icon: Home, mode: 'Organizer' as AppMode },
+  { label: 'Events', icon: CalendarDays, mode: 'Events' as AppMode },
+  { label: 'Neighbors', icon: Users, mode: 'Neighbor RSVP' as AppMode },
+  { label: 'Messages', icon: MessageSquare, mode: 'Message Center' as AppMode },
+  { label: 'Checklists', icon: ClipboardList, mode: 'Run Sheet' as AppMode },
+  { label: 'Settings', icon: Settings, mode: 'Organizer' as AppMode },
 ]
 
 const initialRsvpRows: RsvpRow[] = [
@@ -205,9 +206,9 @@ const initialRsvpRows: RsvpRow[] = [
   { name: 'Sam Rivera', status: 'Yes', note: 'bringing chips', supply: 'Appetizers', role: '' },
 ]
 
-const eventSlug = 'neighborhood-event'
+const defaultEventSlug = 'neighborhood-event'
 const defaultEventDraft: EventRow = {
-  slug: eventSlug,
+  slug: defaultEventSlug,
   event_type: 'Happy Hour',
   name: 'Happy Hour',
   date_label: 'Saturday, May 31, 2025',
@@ -222,6 +223,9 @@ const defaultEventDraft: EventRow = {
 
 function App() {
   const [appMode, setAppMode] = useState<AppMode>('Organizer')
+  const [selectedEventSlug, setSelectedEventSlug] = useState(defaultEventDraft.slug)
+  const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
+  const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
   const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
   const [eventName, setEventName] = useState(defaultEventDraft.name)
@@ -245,37 +249,10 @@ function App() {
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
-  const [messageLog, setMessageLog] = useState<MessageLogItem[]>(() => {
-    const storedMessages = window.localStorage.getItem('gatherkit-message-log')
-    if (!storedMessages) return []
-
-    try {
-      return JSON.parse(storedMessages) as MessageLogItem[]
-    } catch {
-      return []
-    }
-  })
+  const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
   const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Connecting to Supabase...' : 'Local demo mode')
-  const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(() => {
-    const storedTasks = window.localStorage.getItem('gatherkit-run-tasks')
-    if (!storedTasks) return ['confirm-location', 'post-welcome-sign']
-
-    try {
-      return JSON.parse(storedTasks) as string[]
-    } catch {
-      return ['confirm-location', 'post-welcome-sign']
-    }
-  })
-  const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(() => {
-    const storedRows = window.localStorage.getItem('gatherkit-rsvps')
-    if (!storedRows) return initialRsvpRows
-
-    try {
-      return JSON.parse(storedRows) as RsvpRow[]
-    } catch {
-      return initialRsvpRows
-    }
-  })
+  const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
+  const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
 
   const template = useMemo(
     () => eventTemplates.find((item) => item.label === eventType) ?? eventTemplates[0],
@@ -287,7 +264,7 @@ function App() {
   const inviteDraft = `${eventName} is happening ${date} from ${time} at ${location}. ${template.description} RSVP by ${rsvpDate}. ${bringNote}`
   const reminderDraft = `Quick reminder: ${eventName} is coming up at ${location}. ${bringNote} Reply with questions or update your RSVP before ${rsvpDate}.`
   const flyerDraft = `${eventName}\n${date}\n${time}\n${location}\n${bringNote}`
-  const rsvpLink = 'gatherkit.local/e/neighborhood-event'
+  const rsvpLink = `gatherkit.local/e/${selectedEventSlug}`
   const readinessScore = Math.round((completeTasks.length / template.tasks.length) * 100)
   const yesCount = rsvpRows.filter((row) => row.status === 'Yes').length
   const maybeCount = rsvpRows.filter((row) => row.status === 'Maybe').length
@@ -329,38 +306,57 @@ function App() {
           : `Quick update for ${eventName}: we are set for ${date} at ${location}. ${bringNote}`
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      window.localStorage.setItem('gatherkit-rsvps', JSON.stringify(rsvpRows))
+    if (!isSupabaseConfigured && localDataReady) {
+      window.localStorage.setItem(localStorageKey('rsvps'), JSON.stringify(rsvpRows))
     }
-  }, [rsvpRows])
+  }, [localDataReady, rsvpRows, selectedEventSlug])
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      window.localStorage.setItem('gatherkit-run-tasks', JSON.stringify(checkedRunTasks))
+    if (!isSupabaseConfigured && localDataReady) {
+      window.localStorage.setItem(localStorageKey('run-tasks'), JSON.stringify(checkedRunTasks))
     }
-  }, [checkedRunTasks])
+  }, [checkedRunTasks, localDataReady, selectedEventSlug])
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      window.localStorage.setItem('gatherkit-message-log', JSON.stringify(messageLog))
+    if (!isSupabaseConfigured && localDataReady) {
+      window.localStorage.setItem(localStorageKey('message-log'), JSON.stringify(messageLog))
     }
-  }, [messageLog])
+  }, [localDataReady, messageLog, selectedEventSlug])
 
   useEffect(() => {
     if (supabase) return
 
-    const storedEvent = window.localStorage.getItem('gatherkit-event-draft')
-    if (!storedEvent) return
-
     try {
-      applyEventRow(JSON.parse(storedEvent) as EventRow)
-      setEventSaveStatus('Loaded local draft')
+      const storedEvents = window.localStorage.getItem('gatherkit-events')
+      const parsedEvents = storedEvents ? (JSON.parse(storedEvents) as EventRow[]) : []
+      const nextEvents = parsedEvents.length > 0 ? parsedEvents : [defaultEventDraft]
+      const selectedEvent = nextEvents.find((row) => row.slug === selectedEventSlug) ?? nextEvents[0]
+
+      setEventRows(nextEvents)
+      setSelectedEventSlug(selectedEvent.slug)
+      applyEventRow(selectedEvent)
+      setEventSaveStatus('Loaded local events')
       setEventSaveState('saved')
+      setLocalDataReady(true)
     } catch {
-      setEventSaveStatus('Local draft could not be loaded')
+      setEventRows([defaultEventDraft])
+      applyEventRow(defaultEventDraft)
+      setEventSaveStatus('Local events could not be loaded')
       setEventSaveState('error')
+      setLocalDataReady(true)
     }
   }, [])
+
+  useEffect(() => {
+    if (supabase || !localDataReady) return
+
+    const selectedEvent = eventRows.find((row) => row.slug === selectedEventSlug)
+    if (selectedEvent) applyEventRow(selectedEvent)
+
+    setRsvpRows(readLocalList<RsvpRow>(localStorageKey('rsvps'), selectedEventSlug === defaultEventSlug ? initialRsvpRows : []))
+    setCheckedRunTasks(readLocalList<string>(localStorageKey('run-tasks'), []))
+    setMessageLog(readLocalList<MessageLogItem>(localStorageKey('message-log'), []))
+  }, [eventRows, localDataReady, selectedEventSlug])
 
   useEffect(() => {
     if (!supabase) return
@@ -368,45 +364,42 @@ function App() {
     let isMounted = true
     const client = supabase
 
-    async function loadEvent() {
+    async function loadEvents() {
       const { data, error } = await client
         .from('gatherkit_events')
         .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
-        .eq('slug', eventSlug)
-        .maybeSingle()
+        .order('updated_at', { ascending: false })
 
       if (!isMounted) return
 
       if (error) {
-        setEventSaveStatus(`Event sync error: ${error.message}`)
+        setEventSaveStatus(`Event list sync error: ${error.message}`)
         setEventSaveState('error')
         setDataStatus(`Supabase error: ${error.message}`)
         return
       }
 
-      if (data) {
-        applyEventRow(data as EventRow)
-        setEventSaveStatus('Event loaded from Supabase')
-        setEventSaveState('saved')
+      const rows = data as EventRow[]
+      if (rows.length > 0) {
+        setEventRows(rows)
+        if (!rows.some((row) => row.slug === selectedEventSlug)) {
+          setSelectedEventSlug(rows[0].slug)
+        }
         return
       }
 
       await saveEventDetails('Event draft created in Supabase')
     }
 
-    loadEvent()
+    loadEvents()
 
     const channel = client
-      .channel('event-details')
+      .channel('event-list')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'gatherkit_events', filter: `slug=eq.${eventSlug}` },
-        (payload) => {
-          if (payload.new) {
-            applyEventRow(payload.new as EventRow)
-            setEventSaveStatus('Event updated live')
-            setEventSaveState('saved')
-          }
+        { event: '*', schema: 'public', table: 'gatherkit_events' },
+        () => {
+          loadEvents()
         },
       )
       .subscribe()
@@ -423,11 +416,63 @@ function App() {
     let isMounted = true
     const client = supabase
 
+    async function loadEvent() {
+      const { data, error } = await client
+        .from('gatherkit_events')
+        .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
+        .eq('slug', selectedEventSlug)
+        .maybeSingle()
+
+      if (!isMounted) return
+
+      if (error) {
+        setEventSaveStatus(`Event sync error: ${error.message}`)
+        setEventSaveState('error')
+        setDataStatus(`Supabase error: ${error.message}`)
+        return
+      }
+
+      if (data) {
+        applyEventRow(data as EventRow)
+        setEventSaveStatus('Event loaded from Supabase')
+        setEventSaveState('saved')
+      }
+    }
+
+    loadEvent()
+
+    const channel = client
+      .channel(`event-details-${selectedEventSlug}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_events', filter: `slug=eq.${selectedEventSlug}` },
+        (payload) => {
+          if (payload.new) {
+            applyEventRow(payload.new as EventRow)
+            setEventSaveStatus('Event updated live')
+            setEventSaveState('saved')
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [selectedEventSlug])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
     async function loadRsvps() {
       const { data, error } = await client
         .from('gatherkit_event_rsvps')
         .select('id,name,status,note,supply,role')
-        .eq('event_slug', eventSlug)
+        .eq('event_slug', selectedEventSlug)
         .order('updated_at', { ascending: false })
 
       if (!isMounted) return
@@ -437,21 +482,17 @@ function App() {
         return
       }
 
-      if (data.length > 0) {
-        setRsvpRows(data as RsvpRow[])
-      } else {
-        setRsvpRows(initialRsvpRows)
-      }
+      setRsvpRows(data.length > 0 ? (data as RsvpRow[]) : selectedEventSlug === defaultEventSlug ? initialRsvpRows : [])
       setDataStatus('Supabase realtime connected')
     }
 
     loadRsvps()
 
     const channel = client
-      .channel('event-rsvps')
+      .channel(`event-rsvps-${selectedEventSlug}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'gatherkit_event_rsvps', filter: `event_slug=eq.${eventSlug}` },
+        { event: '*', schema: 'public', table: 'gatherkit_event_rsvps', filter: `event_slug=eq.${selectedEventSlug}` },
         () => {
           loadRsvps()
         },
@@ -464,7 +505,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [])
+  }, [selectedEventSlug])
 
   useEffect(() => {
     if (!supabase) return
@@ -476,7 +517,7 @@ function App() {
       const { data, error } = await client
         .from('gatherkit_event_messages')
         .select('id,audience,body,recipient_count,created_at')
-        .eq('event_slug', eventSlug)
+        .eq('event_slug', selectedEventSlug)
         .order('created_at', { ascending: false })
         .limit(20)
 
@@ -501,10 +542,10 @@ function App() {
     loadMessages()
 
     const channel = client
-      .channel('event-messages')
+      .channel(`event-messages-${selectedEventSlug}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'gatherkit_event_messages', filter: `event_slug=eq.${eventSlug}` },
+        { event: '*', schema: 'public', table: 'gatherkit_event_messages', filter: `event_slug=eq.${selectedEventSlug}` },
         () => {
           loadMessages()
         },
@@ -515,7 +556,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [])
+  }, [selectedEventSlug])
 
   useEffect(() => {
     if (!supabase) return
@@ -527,7 +568,7 @@ function App() {
       const { data, error } = await client
         .from('gatherkit_event_tasks')
         .select('task_id,completed')
-        .eq('event_slug', eventSlug)
+        .eq('event_slug', selectedEventSlug)
 
       if (!isMounted) return
 
@@ -543,10 +584,10 @@ function App() {
     loadRunTasks()
 
     const channel = client
-      .channel('event-run-tasks')
+      .channel(`event-run-tasks-${selectedEventSlug}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'gatherkit_event_tasks', filter: `event_slug=eq.${eventSlug}` },
+        { event: '*', schema: 'public', table: 'gatherkit_event_tasks', filter: `event_slug=eq.${selectedEventSlug}` },
         () => {
           loadRunTasks()
         },
@@ -557,7 +598,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [])
+  }, [selectedEventSlug])
 
   useEffect(() => {
     setMessageBody(suggestedMessage)
@@ -594,7 +635,7 @@ function App() {
 
   function buildEventDraft(): EventRow {
     return {
-      slug: eventSlug,
+      slug: selectedEventSlug,
       event_type: eventType,
       name: eventName.trim() || defaultEventDraft.name,
       date_label: date.trim() || defaultEventDraft.date_label,
@@ -614,7 +655,11 @@ function App() {
     setEventSaveStatus('Saving event draft...')
 
     if (!supabase) {
-      window.localStorage.setItem('gatherkit-event-draft', JSON.stringify(eventDraft))
+      setEventRows((rows) => {
+        const nextRows = mergeEventRows(rows, eventDraft)
+        window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+        return nextRows
+      })
       setEventSaveStatus('Event draft saved locally')
       setEventSaveState('saved')
       return true
@@ -655,7 +700,75 @@ function App() {
 
     setEventSaveStatus(successMessage)
     setEventSaveState('saved')
+    setEventRows((rows) => mergeEventRows(rows, eventDraft))
     return true
+  }
+
+  async function createNewEvent() {
+    const slug = `event-${Date.now().toString(36)}`
+    const draft = buildStarterEvent(slug)
+
+    setSelectedEventSlug(slug)
+    setEventRows((rows) => [draft, ...rows])
+    applyEventRow(draft)
+    setRsvpRows([])
+    setCheckedRunTasks([])
+    setMessageLog([])
+    setActiveStep('Details')
+    setAppMode('Organizer')
+    setEventSaveState('saving')
+    setEventSaveStatus('Creating new event...')
+
+    if (!supabase) {
+      const nextRows = [draft, ...eventRows]
+      setEventRows(nextRows)
+      window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+      setEventSaveState('saved')
+      setEventSaveStatus('New event draft created locally')
+      return
+    }
+
+    const { data: host, error: hostError } = await supabase
+      .from('gatherkit_hosts')
+      .upsert(
+        {
+          display_name: draft.host_name,
+          email: draft.host_email,
+          phone: draft.host_phone,
+        },
+        { onConflict: 'email' },
+      )
+      .select('id')
+      .single()
+
+    if (hostError) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      return
+    }
+
+    const { error } = await supabase.from('gatherkit_events').insert({
+      host_id: host.id,
+      ...draft,
+    })
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Event sync error: ${error.message}`)
+      return
+    }
+
+    setEventSaveState('saved')
+    setEventSaveStatus('New event draft created')
+  }
+
+  function selectEvent(row: EventRow, nextMode: AppMode = 'Organizer') {
+    setSelectedEventSlug(row.slug)
+    applyEventRow(row)
+    setActiveStep('Details')
+    setEventSaveState('saved')
+    setEventSaveStatus('Event selected')
+    setAppMode(nextMode)
   }
 
   async function copyText(label: string, text: string) {
@@ -697,7 +810,7 @@ function App() {
     if (supabase) {
       const { error } = await supabase.from('gatherkit_event_rsvps').upsert(
         {
-          event_slug: eventSlug,
+          event_slug: selectedEventSlug,
           ...nextRow,
         },
         { onConflict: 'event_slug,name' },
@@ -736,7 +849,7 @@ function App() {
 
     if (supabase) {
       const { error } = await supabase.from('gatherkit_event_messages').insert({
-        event_slug: eventSlug,
+        event_slug: selectedEventSlug,
         audience,
         body,
         recipient_count: count,
@@ -771,7 +884,7 @@ function App() {
     if (supabase) {
       const { error } = await supabase.from('gatherkit_event_tasks').upsert(
         {
-          event_slug: eventSlug,
+          event_slug: selectedEventSlug,
           task_id: taskId,
           completed: nextCompleted,
         },
@@ -793,6 +906,46 @@ function App() {
     persistMessage('Yes and maybe', body, attendingCount)
   }
 
+  function buildStarterEvent(slug: string): EventRow {
+    const nextTemplate = eventTemplates[0]
+
+    return {
+      slug,
+      event_type: nextTemplate.label,
+      name: nextTemplate.headline,
+      date_label: defaultEventDraft.date_label,
+      time_label: nextTemplate.duration,
+      location: nextTemplate.location,
+      rsvp_deadline: defaultEventDraft.rsvp_deadline,
+      bring_note: nextTemplate.bringNote,
+      host_name: hostName.trim() || defaultEventDraft.host_name,
+      host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
+      host_email: hostEmail.trim() || defaultEventDraft.host_email,
+    }
+  }
+
+  function mergeEventRows(rows: EventRow[], nextRow: EventRow) {
+    const exists = rows.some((row) => row.slug === nextRow.slug)
+    if (!exists) return [nextRow, ...rows]
+
+    return rows.map((row) => (row.slug === nextRow.slug ? nextRow : row))
+  }
+
+  function localStorageKey(kind: string) {
+    return `gatherkit-${kind}-${selectedEventSlug}`
+  }
+
+  function readLocalList<T>(key: string, fallback: T[]) {
+    const storedValue = window.localStorage.getItem(key)
+    if (!storedValue) return fallback
+
+    try {
+      return JSON.parse(storedValue) as T[]
+    } catch {
+      return fallback
+    }
+  }
+
   function templateSafeDefaultSupply() {
     return eventTemplates[0].supplies[0]
   }
@@ -810,10 +963,15 @@ function App() {
         </div>
 
         <nav aria-label="Primary">
-          {navItems.map((item, index) => {
+          {navItems.map((item) => {
             const Icon = item.icon
             return (
-              <button className={index === 0 ? 'nav-item active' : 'nav-item'} key={item.label} type="button">
+              <button
+                className={appMode === item.mode ? 'nav-item active' : 'nav-item'}
+                key={item.label}
+                onClick={() => setAppMode(item.mode)}
+                type="button"
+              >
                 <Icon size={21} />
                 <span>{item.label}</span>
               </button>
@@ -874,7 +1032,52 @@ function App() {
           </div>
         </header>
 
-        {appMode === 'Organizer' ? (
+        {appMode === 'Events' ? (
+          <section className="events-workspace" aria-label="Events dashboard">
+            <div className="events-header">
+              <div>
+                <span className="eyebrow">Events</span>
+                <h2>Manage neighborhood gatherings.</h2>
+                <p>Switch between event plans, create a new draft, and keep each RSVP list and run sheet separate.</p>
+              </div>
+              <button className="primary-action" onClick={createNewEvent} type="button">
+                New Event
+                <PlusCircle size={19} />
+              </button>
+            </div>
+
+            <div className="events-grid">
+              {eventRows.map((row) => (
+                <button
+                  className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
+                  key={row.slug}
+                  onClick={() => selectEvent(row)}
+                  type="button"
+                >
+                  <span className="event-card-type">{row.event_type}</span>
+                  <strong>{row.name}</strong>
+                  <span className="event-card-meta">
+                    <CalendarDays size={15} />
+                    {row.date_label}
+                  </span>
+                  <span className="event-card-meta">
+                    <Clock3 size={15} />
+                    {row.time_label}
+                  </span>
+                  <span className="event-card-meta">
+                    <MapPin size={15} />
+                    {row.location}
+                  </span>
+                  <span className="event-card-host">Host: {row.host_name}</span>
+                  <span className="event-card-action">
+                    Open planner
+                    <ChevronRight size={17} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : appMode === 'Organizer' ? (
         <>
         <section className="content-grid" aria-label="Event planning workspace">
           <section className="planner-panel">
@@ -886,6 +1089,10 @@ function App() {
                 <h2>Plan Your Event</h2>
                 <p>Turn the details into invites, reminders, signups, and day-of tasks.</p>
               </div>
+              <button className="new-event-button" onClick={createNewEvent} type="button">
+                <PlusCircle size={18} />
+                New Event
+              </button>
               <div className="stepper" aria-label="Planning steps">
                 {planningSteps.map((step, index) => (
                   <div className="step-wrap" key={step}>
