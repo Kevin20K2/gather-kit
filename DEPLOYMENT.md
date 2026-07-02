@@ -17,6 +17,8 @@ The app now supports multiple event drafts. The Events sidebar view reads from `
 
 Event-specific URLs are supported with paths like `/e/neighborhood-event` and `/e/event-abc123`. The `vercel.json` rewrite sends direct event links back to the Vite app so refreshes and shared RSVP links work on Vercel.
 
+If someone opens an unknown `/e/:slug` URL, GatherKit shows an event-not-found screen. From there the organizer can create a new event draft using that exact slug or return to the Events list.
+
 ## Next Supabase pass
 
 Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtime slice creates:

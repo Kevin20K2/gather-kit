@@ -44,6 +44,7 @@ type AppMode = 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighb
 type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+type EventLookupState = 'loading' | 'found' | 'missing'
 type RsvpRow = {
   id?: string
   name: string
@@ -254,6 +255,7 @@ function App() {
   const [activeNavLabel, setActiveNavLabel] = useState('Dashboard')
   const [selectedEventSlug, setSelectedEventSlug] = useState(getEventSlugFromPath)
   const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
+  const [eventLookupState, setEventLookupState] = useState<EventLookupState>('loading')
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
   const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
@@ -372,17 +374,22 @@ function App() {
       const storedEvents = window.localStorage.getItem('gatherkit-events')
       const parsedEvents = storedEvents ? (JSON.parse(storedEvents) as EventRow[]) : []
       const nextEvents = parsedEvents.length > 0 ? parsedEvents : [defaultEventDraft]
-      const selectedEvent = nextEvents.find((row) => row.slug === selectedEventSlug) ?? nextEvents[0]
+      const selectedEvent = nextEvents.find((row) => row.slug === selectedEventSlug)
 
       setEventRows(nextEvents)
-      setSelectedEventSlug(selectedEvent.slug)
-      applyEventRow(selectedEvent)
+      if (selectedEvent) {
+        applyEventRow(selectedEvent)
+        setEventLookupState('found')
+      } else {
+        setEventLookupState('missing')
+      }
       setEventSaveStatus('Loaded local events')
       setEventSaveState('saved')
       setLocalDataReady(true)
     } catch {
       setEventRows([defaultEventDraft])
       applyEventRow(defaultEventDraft)
+      setEventLookupState('found')
       setEventSaveStatus('Local events could not be loaded')
       setEventSaveState('error')
       setLocalDataReady(true)
@@ -393,7 +400,12 @@ function App() {
     if (supabase || !localDataReady) return
 
     const selectedEvent = eventRows.find((row) => row.slug === selectedEventSlug)
-    if (selectedEvent) applyEventRow(selectedEvent)
+    if (selectedEvent) {
+      applyEventRow(selectedEvent)
+      setEventLookupState('found')
+    } else {
+      setEventLookupState('missing')
+    }
 
     setRsvpRows(readLocalList<RsvpRow>(localStorageKey('rsvps'), selectedEventSlug === defaultEventSlug ? initialRsvpRows : []))
     setCheckedRunTasks(readLocalList<string>(localStorageKey('run-tasks'), []))
@@ -424,13 +436,13 @@ function App() {
       const rows = data as EventRow[]
       if (rows.length > 0) {
         setEventRows(rows)
-        if (!rows.some((row) => row.slug === selectedEventSlug)) {
-          setSelectedEventSlug(rows[0].slug)
-        }
         return
       }
 
-      await saveEventDetails('Event draft created in Supabase')
+      setEventRows([])
+      if (selectedEventSlug === defaultEventSlug) {
+        await saveEventDetails('Event draft created in Supabase')
+      }
     }
 
     loadEvents()
@@ -459,6 +471,8 @@ function App() {
     const client = supabase
 
     async function loadEvent() {
+      setEventLookupState('loading')
+
       const { data, error } = await client
         .from('gatherkit_events')
         .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
@@ -478,7 +492,16 @@ function App() {
         applyEventRow(data as EventRow)
         setEventSaveStatus('Event loaded from Supabase')
         setEventSaveState('saved')
+        setEventLookupState('found')
+        return
       }
+
+      setEventLookupState('missing')
+      setRsvpRows([])
+      setCheckedRunTasks([])
+      setMessageLog([])
+      setEventSaveStatus('No event found for this link')
+      setEventSaveState('idle')
     }
 
     loadEvent()
@@ -746,13 +769,14 @@ function App() {
     return true
   }
 
-  async function createNewEvent() {
-    const slug = `event-${Date.now().toString(36)}`
+  async function createNewEvent(slugOverride?: string) {
+    const slug = slugOverride ?? `event-${Date.now().toString(36)}`
     const draft = buildStarterEvent(slug)
 
     updateEventUrl(slug)
     setSelectedEventSlug(slug)
     setEventRows((rows) => [draft, ...rows])
+    setEventLookupState('found')
     applyEventRow(draft)
     setRsvpRows([])
     setCheckedRunTasks([])
@@ -761,12 +785,13 @@ function App() {
     setActiveNavLabel('Dashboard')
     setAppMode('Organizer')
     setEventSaveState('saving')
-    setEventSaveStatus('Creating new event...')
+    setEventSaveStatus(slugOverride ? 'Creating event from link...' : 'Creating new event...')
 
     if (!supabase) {
       const nextRows = [draft, ...eventRows]
       setEventRows(nextRows)
       window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+      setEventLookupState('found')
       setEventSaveState('saved')
       setEventSaveStatus('New event draft created locally')
       return
@@ -803,12 +828,18 @@ function App() {
     }
 
     setEventSaveState('saved')
+    setEventLookupState('found')
     setEventSaveStatus('New event draft created')
+  }
+
+  function createEventFromCurrentLink() {
+    createNewEvent(selectedEventSlug)
   }
 
   function selectEvent(row: EventRow, nextMode: AppMode = 'Organizer') {
     updateEventUrl(row.slug)
     setSelectedEventSlug(row.slug)
+    setEventLookupState('found')
     applyEventRow(row)
     setActiveStep('Details')
     setEventSaveState('saved')
@@ -1096,7 +1127,32 @@ function App() {
           </div>
         </header>
 
-        {appMode === 'Events' ? (
+        {eventLookupState === 'missing' && appMode !== 'Events' ? (
+          <section className="event-missing-workspace" aria-label="Event not found">
+            <div className="event-missing-panel">
+              <div className="heading-icon">
+                <CalendarDays />
+              </div>
+              <div>
+                <span className="eyebrow">Event Link</span>
+                <h2>No event found for this link.</h2>
+                <p>
+                  The link points to <strong>{selectedEventSlug}</strong>, but GatherKit does not have an event with that slug yet.
+                </p>
+              </div>
+              <div className="missing-actions">
+                <button className="primary-action" onClick={createEventFromCurrentLink} type="button">
+                  Create This Event
+                  <PlusCircle size={19} />
+                </button>
+                <button className="secondary-action" onClick={() => selectNavItem('Events', 'Events')} type="button">
+                  View Events
+                  <ChevronRight size={19} />
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : appMode === 'Events' ? (
           <section className="events-workspace" aria-label="Events dashboard">
             <div className="events-header">
               <div>
@@ -1104,7 +1160,7 @@ function App() {
                 <h2>Manage neighborhood gatherings.</h2>
                 <p>Switch between event plans, create a new draft, and keep each RSVP list and run sheet separate.</p>
               </div>
-              <button className="primary-action" onClick={createNewEvent} type="button">
+              <button className="primary-action" onClick={() => createNewEvent()} type="button">
                 New Event
                 <PlusCircle size={19} />
               </button>
@@ -1153,7 +1209,7 @@ function App() {
                 <h2>Plan Your Event</h2>
                 <p>Turn the details into invites, reminders, signups, and day-of tasks.</p>
               </div>
-              <button className="new-event-button" onClick={createNewEvent} type="button">
+              <button className="new-event-button" onClick={() => createNewEvent()} type="button">
                 <PlusCircle size={18} />
                 New Event
               </button>
