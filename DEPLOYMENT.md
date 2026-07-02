@@ -15,6 +15,8 @@ This prototype uses Supabase realtime for event drafts, host records, RSVPs, Run
 
 The app now supports multiple event drafts. The Events sidebar view reads from `gatherkit_events`, the organizer can create a new event draft, and RSVP/message/run sheet data follows the selected event slug.
 
+Event-specific URLs are supported with paths like `/e/neighborhood-event` and `/e/event-abc123`. The `vercel.json` rewrite sends direct event links back to the Vite app so refreshes and shared RSVP links work on Vercel.
+
 ## Next Supabase pass
 
 Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtime slice creates:
@@ -29,7 +31,7 @@ Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtim
 
 - Extend the multi-event model into true multiple hosts and host-owned events. Each host should be able to create and manage their own events, while neighbors can RSVP and view the appropriate public event page.
 - Add real host identity/permissions before production use. The current prototype has permissive public policies for easy testing; production should use Supabase Auth and row-level security policies that allow hosts to update only their own events.
-- Add event-specific routes so each event can be opened directly by URL instead of only through the in-app Events list.
+- Add separate public RSVP and protected organizer routes once authentication is introduced.
 
 Then set these Vercel environment variables:
 

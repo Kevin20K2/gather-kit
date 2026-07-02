@@ -34,8 +34,8 @@ type EventType =
   | 'Happy Hour'
   | 'Potluck'
   | 'Block Party'
-  | 'Community Cleanup'
-  | 'Book Club'
+  | 'Bowling Night'
+  | 'Live Music Meetup'
   | 'Game Night'
   | 'Custom'
 
@@ -139,28 +139,28 @@ const eventTemplates: EventTemplate[] = [
     inviteTone: 'upbeat and inclusive',
   },
   {
-    label: 'Community Cleanup',
-    duration: '9:00 AM - 11:30 AM',
-    location: 'Trailhead Kiosk',
-    bringNote: 'Bring gloves if you have them.',
-    headline: 'Community Cleanup',
-    description: 'A focused cleanup morning with teams, supplies, and a simple after-event thank you.',
-    roles: ['Supply captain', 'Zone lead', 'Photo lead'],
-    supplies: ['Gloves', 'Grabbers', 'Trash bags', 'Water bottles'],
-    tasks: ['Choose cleanup zones', 'Request supplies', 'Assign team leads', 'Send safety reminder', 'Review and publish'],
-    inviteTone: 'clear and motivating',
+    label: 'Bowling Night',
+    duration: '6:30 PM - 8:30 PM',
+    location: 'Maple Lanes',
+    bringNote: 'Bring socks and RSVP early so we can reserve enough lanes.',
+    headline: 'Neighborhood Bowling Night',
+    description: 'A casual night out with reserved lanes, simple teams, and an easy meetup plan.',
+    roles: ['Lane captain', 'Score helper', 'Snack pickup'],
+    supplies: ['Lane reservation', 'Shoe sizes', 'Snack money', 'Ride shares'],
+    tasks: ['Reserve lanes', 'Collect shoe sizes', 'Build lane groups', 'Send arrival reminder', 'Review and publish'],
+    inviteTone: 'fun and practical',
   },
   {
-    label: 'Book Club',
-    duration: '7:00 PM - 8:30 PM',
-    location: 'Jordan Taylor Home',
-    bringNote: 'Bring a snack or drink to share.',
-    headline: 'Neighborhood Book Club',
-    description: 'A low-key discussion night with a host, a book pick, and a simple snack plan.',
-    roles: ['Host', 'Discussion starter', 'Snack lead'],
-    supplies: ['Discussion questions', 'Tea', 'Dessert', 'Extra chairs'],
-    tasks: ['Add book title', 'Confirm host', 'Share questions', 'Send reading reminder', 'Review and publish'],
-    inviteTone: 'thoughtful and cozy',
+    label: 'Live Music Meetup',
+    duration: '7:00 PM - 10:00 PM',
+    location: 'Town Green Stage',
+    bringNote: 'Bring a chair or blanket for the lawn.',
+    headline: 'Live Music Meetup',
+    description: 'A relaxed neighborhood meetup around a local show with a simple arrival and seating plan.',
+    roles: ['Meetup host', 'Seat saver', 'Photo sharer'],
+    supplies: ['Blankets', 'Chairs', 'Bug spray', 'Cooler drinks'],
+    tasks: ['Confirm show time', 'Pick meetup spot', 'Share parking notes', 'Send weather reminder', 'Review and publish'],
+    inviteTone: 'upbeat and easygoing',
   },
   {
     label: 'Game Night',
@@ -221,10 +221,38 @@ const defaultEventDraft: EventRow = {
   host_email: 'jordan.taylor@email.com',
 }
 
+function getEventSlugFromPath() {
+  if (typeof window === 'undefined') return defaultEventSlug
+
+  const match = window.location.pathname.match(/^\/e\/([^/?#]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : defaultEventSlug
+}
+
+function getEventUrl(slug: string) {
+  if (typeof window === 'undefined') return `/e/${slug}`
+
+  return `${window.location.origin}/e/${encodeURIComponent(slug)}`
+}
+
+function updateEventUrl(slug: string, replace = false) {
+  if (typeof window === 'undefined') return
+
+  const nextPath = `/e/${encodeURIComponent(slug)}`
+  const nextUrl = `${nextPath}${window.location.search}${window.location.hash}`
+  if (window.location.pathname === nextPath) return
+
+  if (replace) {
+    window.history.replaceState({ eventSlug: slug }, '', nextUrl)
+    return
+  }
+
+  window.history.pushState({ eventSlug: slug }, '', nextUrl)
+}
+
 function App() {
   const [appMode, setAppMode] = useState<AppMode>('Organizer')
   const [activeNavLabel, setActiveNavLabel] = useState('Dashboard')
-  const [selectedEventSlug, setSelectedEventSlug] = useState(defaultEventDraft.slug)
+  const [selectedEventSlug, setSelectedEventSlug] = useState(getEventSlugFromPath)
   const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
@@ -265,7 +293,7 @@ function App() {
   const inviteDraft = `${eventName} is happening ${date} from ${time} at ${location}. ${template.description} RSVP by ${rsvpDate}. ${bringNote}`
   const reminderDraft = `Quick reminder: ${eventName} is coming up at ${location}. ${bringNote} Reply with questions or update your RSVP before ${rsvpDate}.`
   const flyerDraft = `${eventName}\n${date}\n${time}\n${location}\n${bringNote}`
-  const rsvpLink = `gatherkit.local/e/${selectedEventSlug}`
+  const rsvpLink = getEventUrl(selectedEventSlug)
   const readinessScore = Math.round((completeTasks.length / template.tasks.length) * 100)
   const yesCount = rsvpRows.filter((row) => row.status === 'Yes').length
   const maybeCount = rsvpRows.filter((row) => row.status === 'Maybe').length
@@ -305,6 +333,19 @@ function App() {
         : messageAudience === 'Volunteer roles'
           ? `Thank you for volunteering for ${eventName}. Please arrive 20 minutes early so we can get set up together.`
           : `Quick update for ${eventName}: we are set for ${date} at ${location}. ${bringNote}`
+
+  useEffect(() => {
+    updateEventUrl(selectedEventSlug, true)
+  }, [selectedEventSlug])
+
+  useEffect(() => {
+    function handlePopState() {
+      setSelectedEventSlug(getEventSlugFromPath())
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   useEffect(() => {
     if (!isSupabaseConfigured && localDataReady) {
@@ -709,6 +750,7 @@ function App() {
     const slug = `event-${Date.now().toString(36)}`
     const draft = buildStarterEvent(slug)
 
+    updateEventUrl(slug)
     setSelectedEventSlug(slug)
     setEventRows((rows) => [draft, ...rows])
     applyEventRow(draft)
@@ -765,6 +807,7 @@ function App() {
   }
 
   function selectEvent(row: EventRow, nextMode: AppMode = 'Organizer') {
+    updateEventUrl(row.slug)
     setSelectedEventSlug(row.slug)
     applyEventRow(row)
     setActiveStep('Details')
