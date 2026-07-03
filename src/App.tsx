@@ -261,7 +261,7 @@ function isPublicEventPath() {
 
 function getInitialMode(): AppMode {
   if (isPublicEventPath()) return 'Neighbor RSVP'
-  return 'Organizer'
+  return 'Events'
 }
 
 function navLabelForInitialMode(mode: AppMode) {
@@ -375,7 +375,7 @@ function App() {
       normalizedEventHostEmail &&
       normalizedEventHostEmail !== normalizedSignedInEmail,
   )
-  const shouldShowOwnershipGate = isHostMode && isDifferentHostEvent
+  const shouldShowOwnershipGate = isHostMode && appMode !== 'Events' && isDifferentHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
   const profileName = authUser?.email ? authUser.email.split('@')[0] : 'Jordan'
@@ -383,7 +383,17 @@ function App() {
   const topbarTitle = authUser ? `Hello, ${greetingName}` : 'Welcome'
   const topbarSubtitle = authUser
     ? 'Here is what is happening in your neighborhood.'
-    : 'Sign in to manage events, or use the public RSVP view.'
+    : 'Sign in to manage events, or open a public RSVP link.'
+  const authGateTitle =
+    authMode === 'sign-up'
+      ? 'Create your host account.'
+      : appMode === 'Events'
+        ? 'Sign in to manage your events.'
+        : 'Sign in to manage this event.'
+  const authGateDescription =
+    appMode === 'Events'
+      ? 'Create event plans, RSVP links, message drafts, and day-of run sheets from one host dashboard.'
+      : 'Neighbors can still RSVP from the public event link. Organizer tools require a host account.'
 
   useEffect(() => {
     if (!isPublicEventPath()) return
@@ -1535,8 +1545,8 @@ function App() {
               </div>
               <div>
                 <span className="eyebrow">Host Access</span>
-                <h2>{authMode === 'sign-up' ? 'Create your host account.' : 'Sign in to manage this event.'}</h2>
-                <p>Neighbors can still RSVP from the public event link. Organizer tools require a host account.</p>
+                <h2>{authGateTitle}</h2>
+                <p>{authGateDescription}</p>
               </div>
               <div className="auth-form">
                 <div className="auth-mode-toggle" aria-label="Authentication mode">
@@ -1662,36 +1672,50 @@ function App() {
               </button>
             </div>
 
-            <div className="events-grid">
-              {eventRows.map((row) => (
-                <button
-                  className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
-                  key={row.slug}
-                  onClick={() => selectEvent(row)}
-                  type="button"
-                >
-                  <span className="event-card-type">{row.event_type}</span>
-                  <strong>{row.name}</strong>
-                  <span className="event-card-meta">
-                    <CalendarDays size={15} />
-                    {row.date_label}
-                  </span>
-                  <span className="event-card-meta">
-                    <Clock3 size={15} />
-                    {row.time_label}
-                  </span>
-                  <span className="event-card-meta">
-                    <MapPin size={15} />
-                    {row.location}
-                  </span>
-                  <span className="event-card-host">Host: {row.host_name}</span>
-                  <span className="event-card-action">
-                    Open planner
-                    <ChevronRight size={17} />
-                  </span>
+            {eventRows.length > 0 ? (
+              <div className="events-grid">
+                {eventRows.map((row) => (
+                  <button
+                    className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
+                    key={row.slug}
+                    onClick={() => selectEvent(row)}
+                    type="button"
+                  >
+                    <span className="event-card-type">{row.event_type}</span>
+                    <strong>{row.name}</strong>
+                    <span className="event-card-meta">
+                      <CalendarDays size={15} />
+                      {row.date_label}
+                    </span>
+                    <span className="event-card-meta">
+                      <Clock3 size={15} />
+                      {row.time_label}
+                    </span>
+                    <span className="event-card-meta">
+                      <MapPin size={15} />
+                      {row.location}
+                    </span>
+                    <span className="event-card-host">Host: {row.host_name}</span>
+                    <span className="event-card-action">
+                      Open planner
+                      <ChevronRight size={17} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-events">
+                <CalendarDays />
+                <div>
+                  <h3>No host events yet.</h3>
+                  <p>Create your first event draft, then share its public RSVP link with neighbors.</p>
+                </div>
+                <button className="primary-action" onClick={() => createNewEvent()} type="button">
+                  New Event
+                  <PlusCircle size={19} />
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </section>
         ) : appMode === 'Organizer' ? (
         <>
