@@ -395,10 +395,6 @@ function App() {
 
   useEffect(() => {
     if (!supabase) return
-    if (!authUser) {
-      setMessageLog([])
-      return
-    }
 
     let isMounted = true
     const client = supabase
@@ -1282,6 +1278,12 @@ function App() {
         return
       }
 
+      const signedInUser = result.data.user
+      setAuthUser(signedInUser ? { id: signedInUser.id, email: signedInUser.email } : null)
+      setAuthEmail(signedInUser?.email ?? email)
+      if (signedInUser?.email && hostEmail === defaultEventDraft.host_email) {
+        setHostEmail(signedInUser.email)
+      }
       setAuthStatus(`Signed in as ${email}`)
       setAuthNotice('')
     } catch (error) {
