@@ -43,4 +43,15 @@ Then set these Vercel environment variables:
 
 In Supabase Auth, keep the Email provider enabled and add the Vercel deployment URL to the allowed redirect URLs so magic links can return to the app.
 
+For fewer magic-link rate limits, configure a custom SMTP provider in Supabase instead of adding an email API key to the Vite app. Do not put a Resend `re_...` API key in frontend code because it would be exposed in the browser bundle.
+
+Recommended Resend SMTP settings:
+
+- Host: `smtp.resend.com`
+- Port: `465`
+- Username: `resend`
+- Password: your real Resend API key, replacing `re_xxxxxxxxx`
+- Sender name: `GatherKit`
+- Sender email: a verified sender such as `hello@yourdomain.com`
+
 After setting env vars, redeploy the Vercel project.

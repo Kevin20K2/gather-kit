@@ -1082,20 +1082,26 @@ function App() {
     if (!email || !supabase) return
 
     setAuthSending(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.href,
-      },
-    })
-    setAuthSending(false)
 
-    if (error) {
-      setAuthStatus(`Sign-in error: ${error.message}`)
-      return
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: window.location.href,
+        },
+      })
+
+      if (error) {
+        setAuthStatus(`Sign-in error: ${formatAuthError(error)}`)
+        return
+      }
+
+      setAuthStatus(`Magic link sent to ${email}`)
+    } catch (error) {
+      setAuthStatus(`Sign-in error: ${formatAuthError(error)}`)
+    } finally {
+      setAuthSending(false)
     }
-
-    setAuthStatus(`Magic link sent to ${email}`)
   }
 
   async function signOutHost() {
@@ -1114,6 +1120,29 @@ function App() {
     if (mode === 'Run Sheet') return 'Checklists'
     if (mode === 'Neighbor RSVP') return 'Neighbors'
     return 'Dashboard'
+  }
+
+  function formatAuthError(error: unknown) {
+    if (!error) return 'Supabase did not return an error message.'
+    if (typeof error === 'string') return error
+
+    if (error instanceof Error && error.message) return error.message
+
+    if (typeof error === 'object') {
+      const errorRecord = error as Record<string, unknown>
+      const message = errorRecord.message ?? errorRecord.error_description ?? errorRecord.error
+      const status = errorRecord.status ?? errorRecord.statusCode
+      const code = errorRecord.code
+
+      if (typeof message === 'string' && message.trim()) {
+        return [message, code ? `code ${code}` : '', status ? `status ${status}` : ''].filter(Boolean).join(' / ')
+      }
+
+      const serialized = JSON.stringify(errorRecord)
+      if (serialized && serialized !== '{}') return serialized
+    }
+
+    return 'Unable to send magic link. Check Supabase Auth SMTP, redirect URLs, and rate limits.'
   }
 
   function buildStarterEvent(slug: string): EventRow {
