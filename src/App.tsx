@@ -394,6 +394,18 @@ function App() {
     appMode === 'Events'
       ? 'Create event plans, RSVP links, message drafts, and day-of run sheets from one host dashboard.'
       : 'Neighbors can still RSVP from the public event link. Organizer tools require a host account.'
+  const sidebarStatus = authUser
+    ? {
+        title: eventRows.length === 1 ? '1 event ready' : `${eventRows.length} events ready`,
+        body:
+          eventRows.length > 0
+            ? 'Open an event to manage invites, reminders, and day-of tasks.'
+            : 'Create your first event draft from the Events dashboard.',
+      }
+    : {
+        title: 'Host tools ready',
+        body: 'Sign in to create event drafts, RSVP links, and run sheets.',
+      }
 
   useEffect(() => {
     if (!isPublicEventPath()) return
@@ -1462,8 +1474,8 @@ function App() {
 
         <div className="neighbor-note">
           <Sparkles size={24} />
-          <strong>3 drafts ready</strong>
-          <span>Invite, reminder, and supply signup are waiting.</span>
+          <strong>{sidebarStatus.title}</strong>
+          <span>{sidebarStatus.body}</span>
         </div>
       </aside>
 
