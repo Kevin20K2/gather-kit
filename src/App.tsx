@@ -1124,9 +1124,9 @@ function App() {
 
   function formatAuthError(error: unknown) {
     if (!error) return 'Supabase did not return an error message.'
-    if (typeof error === 'string') return error
+    if (typeof error === 'string') return normalizeAuthMessage(error)
 
-    if (error instanceof Error && error.message) return error.message
+    if (error instanceof Error && error.message) return normalizeAuthMessage(error.message)
 
     if (typeof error === 'object') {
       const errorRecord = error as Record<string, unknown>
@@ -1135,7 +1135,11 @@ function App() {
       const code = errorRecord.code
 
       if (typeof message === 'string' && message.trim()) {
-        return [message, code ? `code ${code}` : '', status ? `status ${status}` : ''].filter(Boolean).join(' / ')
+        return [
+          normalizeAuthMessage(message),
+          code ? `code ${code}` : '',
+          status ? `status ${status}` : '',
+        ].filter(Boolean).join(' / ')
       }
 
       const serialized = JSON.stringify(errorRecord)
@@ -1143,6 +1147,16 @@ function App() {
     }
 
     return 'Unable to send magic link. Check Supabase Auth SMTP, redirect URLs, and rate limits.'
+  }
+
+  function normalizeAuthMessage(message: string) {
+    const trimmedMessage = message.trim()
+
+    if (!trimmedMessage || trimmedMessage === '{}' || trimmedMessage === '[]') {
+      return 'Supabase returned an empty auth error. Check Auth email SMTP settings, redirect URLs, and email rate limits.'
+    }
+
+    return trimmedMessage
   }
 
   function buildStarterEvent(slug: string): EventRow {
