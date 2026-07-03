@@ -286,6 +286,7 @@ function App() {
   const [authNotice, setAuthNotice] = useState('')
   const [authSending, setAuthSending] = useState(false)
   const authCheckVersion = useRef(0)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
   const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
@@ -1253,6 +1254,7 @@ function App() {
   function selectNavItem(label: string, mode: AppMode) {
     setActiveNavLabel(label)
     setAppMode(mode)
+    setMenuOpen(false)
   }
 
   async function sendMagicLink() {
@@ -1445,7 +1447,13 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <button
+        aria-label="Close menu"
+        className={menuOpen ? 'sidebar-backdrop open' : 'sidebar-backdrop'}
+        onClick={() => setMenuOpen(false)}
+        type="button"
+      />
+      <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
         <div className="brand-art">
           <img src={neighborhoodArt} alt="Evening neighborhood houses" />
         </div>
@@ -1481,7 +1489,13 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
-          <button className="icon-button" type="button" aria-label="Open menu">
+          <button
+            aria-expanded={menuOpen}
+            className="icon-button"
+            onClick={() => setMenuOpen((isOpen) => !isOpen)}
+            type="button"
+            aria-label="Open menu"
+          >
             <Menu />
           </button>
           <div className="topbar-copy">
