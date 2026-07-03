@@ -362,8 +362,19 @@ function App() {
   const isHostSignedIn = !isSupabaseConfigured || Boolean(authUser)
   const isHostMode = appMode !== 'Neighbor RSVP'
   const shouldShowAuthGate = isHostMode && !isHostSignedIn
+  const normalizedSignedInEmail = authUser?.email?.trim().toLowerCase() ?? ''
+  const normalizedEventHostEmail = hostEmail.trim().toLowerCase()
+  const isDifferentHostEvent = Boolean(
+    isSupabaseConfigured &&
+      authUser?.email &&
+      normalizedEventHostEmail &&
+      normalizedEventHostEmail !== normalizedSignedInEmail,
+  )
+  const shouldShowOwnershipGate = isHostMode && isDifferentHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
+  const profileName = authUser?.email ? authUser.email.split('@')[0] : 'Jordan'
+  const profileInitials = profileName.slice(0, 2).toUpperCase()
   const topbarTitle = authUser ? `Hello, ${greetingName}` : 'Welcome'
   const topbarSubtitle = authUser
     ? 'Here is what is happening in your neighborhood.'
@@ -799,9 +810,21 @@ function App() {
     }
   }
 
+  function setOwnershipWarning(action: string) {
+    setEventSaveState('error')
+    setEventSaveStatus(
+      `This event belongs to ${hostEmail}. You are signed in as ${authUser?.email}. Create your own copy to ${action}.`,
+    )
+  }
+
   async function saveEventDetails(successMessage = 'Event draft saved') {
     if (isSupabaseConfigured && !authUser) {
       setAuthStatus('Sign in as a host to save event drafts.')
+      return false
+    }
+
+    if (isDifferentHostEvent) {
+      setOwnershipWarning('edit it')
       return false
     }
 
@@ -931,6 +954,84 @@ function App() {
     setEventSaveStatus('New event draft created')
   }
 
+  async function createOwnedCopyOfCurrentEvent() {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to copy this event.')
+      setAppMode('Organizer')
+      setActiveNavLabel('Dashboard')
+      return
+    }
+
+    const safeBaseSlug = selectedEventSlug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'event'
+    const slug = `${safeBaseSlug}-copy-${Date.now().toString(36)}`
+    const draft: EventRow = {
+      ...buildEventDraft(),
+      slug,
+      name: eventName.trim() || defaultEventDraft.name,
+      host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
+    }
+
+    updateEventUrl(slug)
+    setSelectedEventSlug(slug)
+    setEventRows((rows) => [draft, ...rows])
+    applyEventRow(draft)
+    setRsvpRows([])
+    setCheckedRunTasks([])
+    setMessageLog([])
+    setEventLookupState('found')
+    setActiveStep('Details')
+    setActiveNavLabel('Dashboard')
+    setAppMode('Organizer')
+    setEventSaveState('saving')
+    setEventSaveStatus('Creating your host-owned copy...')
+
+    if (!supabase) {
+      const nextRows = [draft, ...eventRows]
+      setEventRows(nextRows)
+      window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+      setEventSaveState('saved')
+      setEventSaveStatus('Copied to your account locally')
+      return
+    }
+
+    const { data: host, error: hostError } = await supabase
+      .from('gatherkit_hosts')
+      .upsert(
+        {
+          user_id: authUser?.id,
+          display_name: draft.host_name,
+          email: draft.host_email,
+          phone: draft.host_phone,
+        },
+        { onConflict: 'email' },
+      )
+      .select('id')
+      .single()
+
+    if (hostError) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      return
+    }
+
+    const { error } = await supabase.from('gatherkit_events').insert({
+      host_id: host.id,
+      ...draft,
+    })
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Event copy error: ${error.message}`)
+      return
+    }
+
+    setEventSaveState('saved')
+    setEventSaveStatus('Copied to your account')
+  }
+
   function createEventFromCurrentLink() {
     createNewEvent(selectedEventSlug)
   }
@@ -1020,6 +1121,13 @@ function App() {
       return
     }
 
+    if (isDifferentHostEvent) {
+      setCopiedLabel('Create your own copy to send updates')
+      setOwnershipWarning('send updates')
+      window.setTimeout(() => setCopiedLabel(''), 2600)
+      return
+    }
+
     const nextMessage: MessageLogItem = {
       audience,
       body,
@@ -1059,6 +1167,13 @@ function App() {
   async function toggleRunTask(taskId: string) {
     if (isSupabaseConfigured && !authUser) {
       setCopiedLabel('Sign in as host to update run sheet')
+      window.setTimeout(() => setCopiedLabel(''), 2600)
+      return
+    }
+
+    if (isDifferentHostEvent) {
+      setCopiedLabel('Create your own copy to update the run sheet')
+      setOwnershipWarning('update the run sheet')
       window.setTimeout(() => setCopiedLabel(''), 2600)
       return
     }
@@ -1378,8 +1493,8 @@ function App() {
               <span>2</span>
             </button>
             <div className="profile-chip">
-              <div className="avatar">JT</div>
-              <span>Jordan</span>
+              <div className="avatar">{profileInitials}</div>
+              <span>{profileName}</span>
               <ChevronDown size={18} />
             </div>
           </div>
@@ -1441,6 +1556,44 @@ function App() {
                 View Public RSVP
                 <ChevronRight size={19} />
               </button>
+            </div>
+          </section>
+        ) : shouldShowOwnershipGate ? (
+          <section className="ownership-workspace" aria-label="Event ownership notice">
+            <div className="ownership-panel">
+              <div className="heading-icon">
+                <UserRoundCheck />
+              </div>
+              <div>
+                <span className="eyebrow">Host Access</span>
+                <h2>This event is owned by another host.</h2>
+                <p>
+                  You are signed in as <strong>{authUser?.email}</strong>, but this event is owned by{' '}
+                  <strong>{hostEmail}</strong>. You can still view the public RSVP page, or make a copy under your
+                  account and manage that version.
+                </p>
+              </div>
+              <div className="ownership-summary">
+                <span>Current event</span>
+                <strong>{eventName}</strong>
+                <small>
+                  {date} at {location}
+                </small>
+              </div>
+              <div className="ownership-actions">
+                <button className="primary-action" onClick={createOwnedCopyOfCurrentEvent} type="button">
+                  Create My Copy
+                  <Copy size={19} />
+                </button>
+                <button className="secondary-action" onClick={() => switchMode('Neighbor RSVP')} type="button">
+                  View Public RSVP
+                  <ChevronRight size={19} />
+                </button>
+              </div>
+              <p className="ownership-footnote">
+                To edit the original event, sign in with the owner email. This keeps different hosts from changing each
+                other's plans by accident.
+              </p>
             </div>
           </section>
         ) : eventLookupState === 'missing' && appMode !== 'Events' ? (

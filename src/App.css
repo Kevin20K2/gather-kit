@@ -829,14 +829,16 @@
   align-items: start;
 }
 
-.auth-workspace {
+.auth-workspace,
+.ownership-workspace {
   min-height: calc(100svh - 96px);
   padding: 28px;
   display: grid;
   align-items: start;
 }
 
-.auth-panel {
+.auth-panel,
+.ownership-panel {
   max-width: 920px;
   border: 1px solid #dfe7ef;
   border-radius: 8px;
@@ -849,7 +851,8 @@
   align-items: start;
 }
 
-.auth-panel h2 {
+.auth-panel h2,
+.ownership-panel h2 {
   margin: 4px 0 10px;
   color: #071936;
   font-size: 31px;
@@ -857,7 +860,8 @@
   letter-spacing: 0;
 }
 
-.auth-panel p {
+.auth-panel p,
+.ownership-panel p {
   max-width: 680px;
   margin: 0;
   color: #435d73;
@@ -936,6 +940,48 @@
 .public-rsvp-action {
   grid-column: 2;
   justify-self: start;
+}
+
+.ownership-summary {
+  grid-column: 2;
+  max-width: 520px;
+  border: 1px solid #d8e5ee;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.ownership-summary span {
+  color: #078d96;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ownership-summary strong {
+  color: #071936;
+  font-size: 19px;
+}
+
+.ownership-summary small {
+  color: #526b80;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ownership-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ownership-footnote {
+  grid-column: 2;
+  font-size: 14px;
 }
 
 .event-missing-panel {
