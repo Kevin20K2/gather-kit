@@ -302,11 +302,11 @@ function App() {
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
   const [copiedLabel, setCopiedLabel] = useState('')
-  const [neighborName, setNeighborName] = useState('Maya Chen')
+  const [neighborName, setNeighborName] = useState('')
   const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus>('Yes')
-  const [pledgedSupply, setPledgedSupply] = useState(templateSafeDefaultSupply())
+  const [pledgedSupply, setPledgedSupply] = useState('')
   const [pledgedRole, setPledgedRole] = useState('')
-  const [neighborNote, setNeighborNote] = useState('Happy to help set up if needed.')
+  const [neighborNote, setNeighborNote] = useState('')
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
@@ -1093,10 +1093,17 @@ function App() {
   }
 
   async function submitRsvp() {
+    const trimmedName = neighborName.trim()
+    if (!trimmedName) {
+      setSubmittedMessage('Please add your name before sending your RSVP.')
+      window.setTimeout(() => setSubmittedMessage(''), 2600)
+      return
+    }
+
     const nextRow: RsvpRow = {
-      name: neighborName.trim() || 'Neighbor',
+      name: trimmedName,
       status: rsvpStatus,
-      note: neighborNote.trim() || 'No note',
+      note: neighborNote.trim(),
       supply: rsvpStatus === 'No' ? '' : pledgedSupply,
       role: rsvpStatus === 'No' ? '' : pledgedRole,
     }
@@ -1422,10 +1429,6 @@ function App() {
     } catch {
       return fallback
     }
-  }
-
-  function templateSafeDefaultSupply() {
-    return eventTemplates[0].supplies[0]
   }
 
   return (
@@ -2324,7 +2327,11 @@ function App() {
                   <span>Your Name</span>
                   <div className="input-shell">
                     <Users size={22} />
-                    <input value={neighborName} onChange={(event) => setNeighborName(event.target.value)} />
+                    <input
+                      placeholder="Enter your name"
+                      value={neighborName}
+                      onChange={(event) => setNeighborName(event.target.value)}
+                    />
                   </div>
                 </label>
                 <div className="status-options" aria-label="RSVP status">
@@ -2344,6 +2351,7 @@ function App() {
                   <div className="input-shell select-shell">
                     <Gift size={22} />
                     <select value={pledgedSupply} onChange={(event) => setPledgedSupply(event.target.value)}>
+                      <option value="">Choose an item</option>
                       {template.supplies.map((supply) => (
                         <option key={supply}>{supply}</option>
                       ))}
@@ -2368,7 +2376,11 @@ function App() {
                   <span>Note for the host</span>
                   <div className="input-shell note-shell">
                     <MessageSquare size={22} />
-                    <textarea value={neighborNote} onChange={(event) => setNeighborNote(event.target.value)} />
+                    <textarea
+                      placeholder="Add a note or question"
+                      value={neighborNote}
+                      onChange={(event) => setNeighborNote(event.target.value)}
+                    />
                   </div>
                 </label>
                 <button className="primary-action submit-rsvp" onClick={submitRsvp} type="button">
@@ -2392,7 +2404,7 @@ function App() {
                   </div>
                   <div className="summary-line">
                     <span>Bringing</span>
-                    <strong>{pledgedSupply}</strong>
+                    <strong>{rsvpStatus === 'No' ? 'Not attending' : pledgedSupply || 'Not selected'}</strong>
                   </div>
                   <div className="summary-line">
                     <span>Helping</span>
