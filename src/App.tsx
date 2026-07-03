@@ -255,8 +255,12 @@ function updateEventUrl(slug: string, replace = false) {
   window.history.pushState({ eventSlug: slug }, '', nextUrl)
 }
 
+function isPublicEventPath() {
+  return typeof window !== 'undefined' && window.location.pathname.startsWith('/e/')
+}
+
 function getInitialMode(): AppMode {
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/e/')) return 'Neighbor RSVP'
+  if (isPublicEventPath()) return 'Neighbor RSVP'
   return 'Organizer'
 }
 
@@ -384,6 +388,13 @@ function App() {
   useEffect(() => {
     updateEventUrl(selectedEventSlug, true)
   }, [selectedEventSlug])
+
+  useEffect(() => {
+    if (!isPublicEventPath()) return
+
+    setAppMode('Neighbor RSVP')
+    setActiveNavLabel('Neighbors')
+  }, [])
 
   useEffect(() => {
     function handlePopState() {
