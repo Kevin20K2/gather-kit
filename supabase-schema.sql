@@ -139,12 +139,16 @@ create table if not exists public.gatherkit_events (
   location text not null,
   rsvp_deadline text not null,
   bring_note text not null,
+  status text not null default 'draft',
   host_name text not null,
   host_phone text not null default '',
   host_email text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.gatherkit_events
+add column if not exists status text not null default 'draft';
 
 drop trigger if exists gatherkit_events_set_updated_at on public.gatherkit_events;
 

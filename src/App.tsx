@@ -46,6 +46,7 @@ type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Su
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type EventLookupState = 'loading' | 'found' | 'missing'
 type AuthMode = 'sign-in' | 'sign-up'
+type EventStatus = 'draft' | 'published'
 type AuthUser = {
   id: string
   email?: string
@@ -92,6 +93,7 @@ type EventRow = {
   host_name: string
   host_phone: string
   host_email: string
+  status?: EventStatus
 }
 
 type EventTemplate = {
@@ -225,6 +227,7 @@ const defaultEventDraft: EventRow = {
   host_name: 'Jordan Taylor',
   host_phone: '(555) 123-4567',
   host_email: 'jordan.taylor@email.com',
+  status: 'draft',
 }
 
 function getEventSlugFromPath() {
@@ -363,6 +366,32 @@ function getInitialMode(): AppMode {
   return 'Events'
 }
 
+const eventSelectColumns =
+  'slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email,status'
+
+const fallbackEventSelectColumns =
+  'slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email'
+
+function isMissingStatusColumn(error: { message?: string } | null) {
+  return Boolean(error?.message?.toLowerCase().includes('status'))
+}
+
+function eventRowWithoutStatus(row: EventRow) {
+  return {
+    slug: row.slug,
+    event_type: row.event_type,
+    name: row.name,
+    date_label: row.date_label,
+    time_label: row.time_label,
+    location: row.location,
+    rsvp_deadline: row.rsvp_deadline,
+    bring_note: row.bring_note,
+    host_name: row.host_name,
+    host_phone: row.host_phone,
+    host_email: row.host_email,
+  }
+}
+
 function navLabelForInitialMode(mode: AppMode) {
   if (mode === 'Events') return 'Events'
   if (mode === 'Message Center') return 'Messages'
@@ -401,6 +430,7 @@ function App() {
   const [hostName, setHostName] = useState(defaultEventDraft.host_name)
   const [hostEmail, setHostEmail] = useState(defaultEventDraft.host_email)
   const [hostPhone, setHostPhone] = useState(defaultEventDraft.host_phone)
+  const [eventStatus, setEventStatus] = useState<EventStatus>(defaultEventDraft.status ?? 'draft')
   const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
@@ -645,11 +675,23 @@ function App() {
     const hostEmailFilter = authUser.email
 
     async function loadEvents() {
-      const { data, error } = await client
+      const result = await client
         .from('gatherkit_events')
-        .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
+        .select(eventSelectColumns)
         .eq('host_email', hostEmailFilter)
         .order('updated_at', { ascending: false })
+      let data: unknown = result.data
+      let error = result.error
+
+      if (isMissingStatusColumn(error)) {
+        const fallbackResult = await client
+          .from('gatherkit_events')
+          .select(fallbackEventSelectColumns)
+          .eq('host_email', hostEmailFilter)
+          .order('updated_at', { ascending: false })
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
 
       if (!isMounted) return
 
@@ -699,11 +741,23 @@ function App() {
     async function loadEvent() {
       setEventLookupState('loading')
 
-      const { data, error } = await client
+      const result = await client
         .from('gatherkit_events')
-        .select('slug,event_type,name,date_label,time_label,location,rsvp_deadline,bring_note,host_name,host_phone,host_email')
+        .select(eventSelectColumns)
         .eq('slug', selectedEventSlug)
         .maybeSingle()
+      let data: unknown = result.data
+      let error = result.error
+
+      if (isMissingStatusColumn(error)) {
+        const fallbackResult = await client
+          .from('gatherkit_events')
+          .select(fallbackEventSelectColumns)
+          .eq('slug', selectedEventSlug)
+          .maybeSingle()
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
 
       if (!isMounted) return
 
@@ -969,9 +1023,10 @@ function App() {
     setHostName(row.host_name || defaultEventDraft.host_name)
     setHostPhone(row.host_phone || defaultEventDraft.host_phone)
     setHostEmail(row.host_email || defaultEventDraft.host_email)
+    setEventStatus(row.status ?? 'draft')
   }
 
-  function buildEventDraft(): EventRow {
+  function buildEventDraft(status: EventStatus = eventStatus): EventRow {
     return {
       slug: selectedEventSlug,
       event_type: eventType,
@@ -984,6 +1039,7 @@ function App() {
       host_name: hostName.trim() || defaultEventDraft.host_name,
       host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
       host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
+      status,
     }
   }
 
@@ -994,7 +1050,7 @@ function App() {
     )
   }
 
-  async function saveEventDetails(successMessage = 'Event draft saved') {
+  async function saveEventDetails(successMessage = 'Event draft saved', nextStatus: EventStatus = eventStatus) {
     if (isSupabaseConfigured && !authUser) {
       setAuthStatus('Sign in as a host to save event drafts.')
       return false
@@ -1005,7 +1061,7 @@ function App() {
       return false
     }
 
-    const eventDraft = buildEventDraft()
+    const eventDraft = buildEventDraft(nextStatus)
     setEventSaveState('saving')
     setEventSaveStatus('Saving event draft...')
 
@@ -1040,13 +1096,24 @@ function App() {
       return false
     }
 
-    const { error } = await supabase.from('gatherkit_events').upsert(
+    let { error } = await supabase.from('gatherkit_events').upsert(
       {
         host_id: host.id,
         ...eventDraft,
       },
       { onConflict: 'slug' },
     )
+
+    if (isMissingStatusColumn(error)) {
+      const fallbackResult = await supabase.from('gatherkit_events').upsert(
+        {
+          host_id: host.id,
+          ...eventRowWithoutStatus(eventDraft),
+        },
+        { onConflict: 'slug' },
+      )
+      error = fallbackResult.error
+    }
 
     if (error) {
       setEventSaveStatus(`Event sync error: ${error.message}`)
@@ -1056,6 +1123,7 @@ function App() {
 
     setEventSaveStatus(successMessage)
     setEventSaveState('saved')
+    setEventStatus(nextStatus)
     setEventRows((rows) => mergeEventRows(rows, eventDraft))
     return true
   }
@@ -1115,10 +1183,18 @@ function App() {
       return
     }
 
-    const { error } = await supabase.from('gatherkit_events').insert({
+    let { error } = await supabase.from('gatherkit_events').insert({
       host_id: host.id,
       ...draft,
     })
+
+    if (isMissingStatusColumn(error)) {
+      const fallbackResult = await supabase.from('gatherkit_events').insert({
+        host_id: host.id,
+        ...eventRowWithoutStatus(draft),
+      })
+      error = fallbackResult.error
+    }
 
     if (error) {
       setEventSaveState('error')
@@ -1127,6 +1203,7 @@ function App() {
     }
 
     setEventSaveState('saved')
+    setEventStatus(draft.status ?? 'draft')
     setEventLookupState('found')
     setEventSaveStatus('New event draft created')
   }
@@ -1149,6 +1226,7 @@ function App() {
       slug,
       name: eventName.trim() || defaultEventDraft.name,
       host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
+      status: 'draft',
     }
 
     updateEventUrl(slug)
@@ -1194,10 +1272,18 @@ function App() {
       return
     }
 
-    const { error } = await supabase.from('gatherkit_events').insert({
+    let { error } = await supabase.from('gatherkit_events').insert({
       host_id: host.id,
       ...draft,
     })
+
+    if (isMissingStatusColumn(error)) {
+      const fallbackResult = await supabase.from('gatherkit_events').insert({
+        host_id: host.id,
+        ...eventRowWithoutStatus(draft),
+      })
+      error = fallbackResult.error
+    }
 
     if (error) {
       setEventSaveState('error')
@@ -1206,6 +1292,7 @@ function App() {
     }
 
     setEventSaveState('saved')
+    setEventStatus('draft')
     setEventSaveStatus('Copied to your account')
   }
 
@@ -1236,7 +1323,10 @@ function App() {
   }
 
   async function goForward() {
-    const saved = await saveEventDetails(activeStep === 'Review' ? 'Event saved and ready' : 'Event draft saved')
+    const saved = await saveEventDetails(
+      activeStep === 'Review' ? 'Event published' : 'Event draft saved',
+      activeStep === 'Review' ? 'published' : eventStatus,
+    )
     if (!saved) return
 
     if (activeStep === 'Details') setActiveStep('Invite')
@@ -1857,7 +1947,10 @@ function App() {
                     onClick={() => selectEvent(row)}
                     type="button"
                   >
-                    <span className="event-card-type">{row.event_type}</span>
+                    <span className="event-card-badges">
+                      <span className="event-card-type">{row.event_type}</span>
+                      <span className={`event-status ${row.status ?? 'draft'}`}>{row.status === 'published' ? 'Published' : 'Draft'}</span>
+                    </span>
                     <strong>{row.name}</strong>
                     <span className="event-card-meta">
                       <CalendarDays size={15} />
@@ -2130,13 +2223,26 @@ function App() {
                   <button
                     className="primary-action"
                     disabled={eventSaveState === 'saving'}
-                    onClick={() => saveEventDetails('Event published')}
+                    onClick={() => saveEventDetails('Event published', 'published')}
                     type="button"
                   >
                     Publish Event
                     <ChevronRight size={21} />
                   </button>
                 </section>
+                {eventStatus === 'published' && (
+                  <section className="published-card">
+                    <div>
+                      <span className="event-status published">Published</span>
+                      <h3>Public RSVP link is ready.</h3>
+                      <p>{rsvpLink}</p>
+                    </div>
+                    <button className="secondary-action" onClick={() => copyText('RSVP Link', rsvpLink)} type="button">
+                      <Copy size={18} />
+                      {copiedLabel === 'RSVP Link' ? 'Copied' : 'Copy Link'}
+                    </button>
+                  </section>
+                )}
                 <section className="review-grid">
                   <article>
                     <h3>Organizer Packet</h3>
@@ -2204,7 +2310,7 @@ function App() {
                   onClick={goForward}
                   type="button"
                 >
-                  {activeStep === 'Review' ? 'Create Event' : 'Continue'}
+                  {activeStep === 'Review' ? 'Publish Event' : 'Continue'}
                   <ChevronRight size={21} />
                 </button>
               </div>
