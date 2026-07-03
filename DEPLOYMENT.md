@@ -19,7 +19,7 @@ Event-specific URLs are supported with paths like `/e/neighborhood-event` and `/
 
 If someone opens an unknown `/e/:slug` URL, GatherKit shows an event-not-found screen. From there the organizer can create a new event draft using that exact slug or return to the Events list.
 
-Organizer tools now require Supabase magic-link sign-in when Supabase is configured. Public RSVP remains open from `/e/:slug`.
+Organizer tools now require Supabase host sign-in when Supabase is configured. Hosts can create an email/password account, sign in with that password later, or use a magic link as a fallback. Public RSVP remains open from `/e/:slug`.
 
 Row-level security now keeps event details publicly readable for RSVP links, but host-only writes are enforced for event drafts, message logs, and run sheet task updates. RSVP rows remain public so neighbors can respond without accounts.
 
@@ -42,7 +42,7 @@ Then set these Vercel environment variables:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-In Supabase Auth, keep the Email provider enabled and add the Vercel deployment URL to the allowed redirect URLs so magic links can return to the app.
+In Supabase Auth, keep the Email provider enabled and add the Vercel deployment URL to the allowed redirect URLs so account confirmation and magic links can return to the app.
 
 For fewer magic-link rate limits, configure a custom SMTP provider in Supabase instead of adding an email API key to the Vite app. Do not put a Resend `re_...` API key in frontend code because it would be exposed in the browser bundle.
 

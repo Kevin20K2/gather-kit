@@ -45,6 +45,7 @@ type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type EventLookupState = 'loading' | 'found' | 'missing'
+type AuthMode = 'sign-in' | 'sign-up'
 type AuthUser = {
   id: string
   email?: string
@@ -274,7 +275,9 @@ function App() {
   const [eventRows, setEventRows] = useState<EventRow[]>([defaultEventDraft])
   const [eventLookupState, setEventLookupState] = useState<EventLookupState>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authMode, setAuthMode] = useState<AuthMode>('sign-in')
   const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'Checking your session...' : 'Demo mode')
   const [authNotice, setAuthNotice] = useState('')
   const [authSending, setAuthSending] = useState(false)
@@ -1135,6 +1138,48 @@ function App() {
     }
   }
 
+  async function submitPasswordAuth() {
+    const email = authEmail.trim()
+    if (!email || !authPassword || !supabase) return
+
+    setAuthSending(true)
+    setAuthNotice('')
+
+    try {
+      const redirectTo = window.location.href
+      const result = authMode === 'sign-up'
+        ? await supabase.auth.signUp({
+            email,
+            password: authPassword,
+            options: {
+              emailRedirectTo: redirectTo,
+            },
+          })
+        : await supabase.auth.signInWithPassword({
+            email,
+            password: authPassword,
+          })
+
+      if (result.error) {
+        setAuthStatus(`${authMode === 'sign-up' ? 'Account setup' : 'Sign-in'} error: ${formatAuthError(result.error)}`)
+        return
+      }
+
+      if (authMode === 'sign-up' && !result.data.session) {
+        setAuthStatus(`Account created for ${email}`)
+        setAuthNotice('Check your email once to verify this account.')
+        return
+      }
+
+      setAuthStatus(`Signed in as ${email}`)
+      setAuthNotice('')
+    } catch (error) {
+      setAuthStatus(`${authMode === 'sign-up' ? 'Account setup' : 'Sign-in'} error: ${formatAuthError(error)}`)
+    } finally {
+      setAuthSending(false)
+    }
+  }
+
   async function signOutHost() {
     if (!supabase) return
 
@@ -1298,8 +1343,15 @@ function App() {
                     value={authEmail}
                     onChange={(event) => setAuthEmail(event.target.value)}
                   />
-                  <button disabled={authSending} onClick={sendMagicLink} type="button">
-                    {authSending ? 'Sending...' : 'Sign in'}
+                  <input
+                    aria-label="Host password"
+                    placeholder="Password"
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                  />
+                  <button disabled={authSending} onClick={submitPasswordAuth} type="button">
+                    {authSending ? 'Working...' : authMode === 'sign-up' ? 'Create' : 'Sign in'}
                   </button>
                   {authNotice && <strong>{authNotice}</strong>}
                 </>
@@ -1348,21 +1400,49 @@ function App() {
               </div>
               <div>
                 <span className="eyebrow">Host Access</span>
-                <h2>Sign in to manage this event.</h2>
-                <p>Neighbors can still RSVP from the public event link. Organizer tools require a host magic link.</p>
+                <h2>{authMode === 'sign-up' ? 'Create your host account.' : 'Sign in to manage this event.'}</h2>
+                <p>Neighbors can still RSVP from the public event link. Organizer tools require a host account.</p>
               </div>
               <div className="auth-form">
+                <div className="auth-mode-toggle" aria-label="Authentication mode">
+                  <button
+                    className={authMode === 'sign-in' ? 'selected' : ''}
+                    onClick={() => setAuthMode('sign-in')}
+                    type="button"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    className={authMode === 'sign-up' ? 'selected' : ''}
+                    onClick={() => setAuthMode('sign-up')}
+                    type="button"
+                  >
+                    Create account
+                  </button>
+                </div>
                 <input
                   aria-label="Host email"
                   placeholder="host@email.com"
                   value={authEmail}
                   onChange={(event) => setAuthEmail(event.target.value)}
                 />
-                <button className="primary-action" disabled={authSending} onClick={sendMagicLink} type="button">
-                  {authSending ? 'Sending...' : 'Send Magic Link'}
+                <input
+                  aria-label="Host password"
+                  placeholder="Password"
+                  type="password"
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                />
+                <button className="primary-action" disabled={authSending} onClick={submitPasswordAuth} type="button">
+                  {authSending ? 'Working...' : authMode === 'sign-up' ? 'Create Account' : 'Sign In'}
+                  <UserRoundCheck size={19} />
+                </button>
+                <button className="secondary-action magic-link-action" disabled={authSending} onClick={sendMagicLink} type="button">
+                  Email me a sign-in link
                   <Mail size={19} />
                 </button>
                 <span>{authStatus}</span>
+                {authNotice && <strong>{authNotice}</strong>}
               </div>
               <button className="secondary-action public-rsvp-action" onClick={() => switchMode('Neighbor RSVP')} type="button">
                 View Public RSVP
