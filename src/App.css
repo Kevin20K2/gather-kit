@@ -5,6 +5,10 @@
   background: #f7f9fb;
 }
 
+.public-invite-shell {
+  display: block;
+}
+
 .sidebar {
   background:
     linear-gradient(180deg, rgba(0, 151, 157, 0.14), transparent 30%),
@@ -134,6 +138,32 @@
   position: sticky;
   top: 0;
   z-index: 5;
+}
+
+.public-invite-topbar {
+  min-height: 78px;
+  padding: 0 clamp(16px, 4vw, 48px);
+}
+
+.public-invite-topbar .topbar-copy {
+  max-width: 900px;
+}
+
+.host-sign-in-link {
+  min-height: 42px;
+  border: 1px solid #d9e3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #078d96;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .icon-button,
@@ -1388,6 +1418,11 @@
   gap: 24px;
 }
 
+.public-invite-shell .neighbor-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
 .message-center {
   padding: 26px 28px 34px;
   display: grid;
@@ -2223,8 +2258,24 @@ select:focus-visible {
     gap: 12px;
   }
 
+  .public-invite-topbar {
+    min-height: 92px;
+    align-content: center;
+  }
+
+  .host-sign-in-link {
+    width: 100%;
+    justify-content: center;
+  }
+
   .topbar-copy p {
     display: none;
+  }
+
+  .public-invite-topbar .topbar-copy p {
+    display: block;
+    font-size: 13px;
+    line-height: 1.35;
   }
 
   .topbar h2 {

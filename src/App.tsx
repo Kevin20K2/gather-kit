@@ -499,6 +499,7 @@ function App() {
           : `Quick update for ${eventName}: we are set for ${date} at ${location}. ${bringNote}`
   const isHostSignedIn = !isSupabaseConfigured || Boolean(authUser)
   const isHostMode = appMode !== 'Neighbor RSVP'
+  const isPublicInviteMode = isPublicEventPath() && appMode === 'Neighbor RSVP'
   const shouldShowAuthGate = isHostMode && !isHostSignedIn
   const normalizedSignedInEmail = authUser?.email?.trim().toLowerCase() ?? ''
   const normalizedEventHostEmail = hostEmail.trim().toLowerCase()
@@ -517,6 +518,8 @@ function App() {
   const topbarSubtitle = authUser
     ? 'Here is what is happening in your neighborhood.'
     : 'Sign in to manage events, or open a public RSVP link.'
+  const inviteTopbarTitle = "You're invited"
+  const inviteTopbarSubtitle = `${eventName} / ${date} / ${location}`
   const authGateTitle =
     authMode === 'sign-up'
       ? 'Create your host account.'
@@ -1683,14 +1686,16 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <button
-        aria-label="Close menu"
-        className={menuOpen ? 'sidebar-backdrop open' : 'sidebar-backdrop'}
-        onClick={() => setMenuOpen(false)}
-        type="button"
-      />
-      <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
+    <div className={isPublicInviteMode ? 'app-shell public-invite-shell' : 'app-shell'}>
+      {!isPublicInviteMode && (
+        <button
+          aria-label="Close menu"
+          className={menuOpen ? 'sidebar-backdrop open' : 'sidebar-backdrop'}
+          onClick={() => setMenuOpen(false)}
+          type="button"
+        />
+      )}
+      {!isPublicInviteMode && <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
         <div className="brand-art">
           <img src={neighborhoodArt} alt="Evening neighborhood houses" />
         </div>
@@ -1722,24 +1727,31 @@ function App() {
           <strong>{sidebarStatus.title}</strong>
           <span>{sidebarStatus.body}</span>
         </div>
-      </aside>
+      </aside>}
 
       <main className="workspace">
-        <header className="topbar">
-          <button
-            aria-expanded={menuOpen}
-            className="icon-button"
-            onClick={() => setMenuOpen((isOpen) => !isOpen)}
-            type="button"
-            aria-label="Open menu"
-          >
-            <Menu />
-          </button>
+        <header className={isPublicInviteMode ? 'topbar public-invite-topbar' : 'topbar'}>
+          {!isPublicInviteMode && (
+            <button
+              aria-expanded={menuOpen}
+              className="icon-button"
+              onClick={() => setMenuOpen((isOpen) => !isOpen)}
+              type="button"
+              aria-label="Open menu"
+            >
+              <Menu />
+            </button>
+          )}
           <div className="topbar-copy">
-            <h2>{topbarTitle}</h2>
-            <p>{topbarSubtitle}</p>
+            <h2>{isPublicInviteMode ? inviteTopbarTitle : topbarTitle}</h2>
+            <p>{isPublicInviteMode ? inviteTopbarSubtitle : topbarSubtitle}</p>
           </div>
-          {isSupabaseConfigured && (
+          {isPublicInviteMode ? (
+            <button className="host-sign-in-link" onClick={() => switchMode('Organizer')} type="button">
+              Host sign in
+              <ChevronRight size={17} />
+            </button>
+          ) : isSupabaseConfigured && (
             <div className="auth-pill">
               {authUser ? (
                 <>
@@ -1769,7 +1781,7 @@ function App() {
               )}
             </div>
           )}
-          <div className="mode-toggle" aria-label="View mode">
+          {!isPublicInviteMode && <div className="mode-toggle" aria-label="View mode">
             {(['Organizer', 'Message Center', 'Run Sheet', 'Neighbor RSVP'] as AppMode[]).map((mode) => (
               <button
                 className={appMode === mode ? 'selected' : ''}
@@ -1789,8 +1801,8 @@ function App() {
                 {mode}
               </button>
             ))}
-          </div>
-          <div className="topbar-actions">
+          </div>}
+          {!isPublicInviteMode && <div className="topbar-actions">
             <button className="bell-button" type="button" aria-label="Notifications">
               <Bell />
               <span>2</span>
@@ -1800,7 +1812,7 @@ function App() {
               <span>{profileName}</span>
               <ChevronDown size={18} />
             </div>
-          </div>
+          </div>}
         </header>
 
         {shouldShowAuthGate ? (
