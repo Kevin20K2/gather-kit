@@ -255,6 +255,54 @@ function updateEventUrl(slug: string, replace = false) {
   window.history.pushState({ eventSlug: slug }, '', nextUrl)
 }
 
+function dateInputToLocalDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+
+  return new Date(year, month - 1, day)
+}
+
+function localDateToDateInput(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function dateLabelToDateInput(label: string) {
+  const parsedDate = new Date(label)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  return localDateToDateInput(parsedDate)
+}
+
+function formatDateLabelFromInput(value: string) {
+  const parsedDate = dateInputToLocalDate(value)
+  if (!parsedDate) return ''
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(parsedDate)
+}
+
+function getAutoRsvpDeadlineLabel(eventDateLabel: string) {
+  const eventDateInput = dateLabelToDateInput(eventDateLabel)
+  const eventDate = dateInputToLocalDate(eventDateInput)
+  if (!eventDate) return ''
+
+  const deadline = new Date(eventDate)
+  deadline.setDate(deadline.getDate() - 3)
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(deadline)
+}
+
 function isPublicEventPath() {
   return typeof window !== 'undefined' && window.location.pathname.startsWith('/e/')
 }
@@ -295,6 +343,7 @@ function App() {
   const [time, setTime] = useState(defaultEventDraft.time_label)
   const [location, setLocation] = useState(defaultEventDraft.location)
   const [rsvpDate, setRsvpDate] = useState(defaultEventDraft.rsvp_deadline)
+  const [rsvpDeadlineTouched, setRsvpDeadlineTouched] = useState(false)
   const [bringNote, setBringNote] = useState(defaultEventDraft.bring_note)
   const [hostName, setHostName] = useState(defaultEventDraft.host_name)
   const [hostEmail, setHostEmail] = useState(defaultEventDraft.host_email)
@@ -807,17 +856,38 @@ function App() {
     setPledgedRole('')
   }
 
+  function handleEventDateChange(value: string) {
+    const nextDateLabel = formatDateLabelFromInput(value)
+    if (!nextDateLabel) return
+
+    setDate(nextDateLabel)
+    if (!rsvpDeadlineTouched) {
+      setRsvpDate(getAutoRsvpDeadlineLabel(nextDateLabel))
+    }
+  }
+
+  function handleRsvpDateChange(value: string) {
+    const nextRsvpDateLabel = formatDateLabelFromInput(value)
+    if (!nextRsvpDateLabel) return
+
+    setRsvpDeadlineTouched(true)
+    setRsvpDate(nextRsvpDateLabel)
+  }
+
   function applyEventRow(row: EventRow) {
     const supportedType = eventTemplates.some((item) => item.label === row.event_type)
       ? row.event_type
       : defaultEventDraft.event_type
+    const nextDateLabel = row.date_label || defaultEventDraft.date_label
+    const nextRsvpDateLabel = row.rsvp_deadline || defaultEventDraft.rsvp_deadline
 
     setEventType(supportedType)
     setEventName(row.name || defaultEventDraft.name)
-    setDate(row.date_label || defaultEventDraft.date_label)
+    setDate(nextDateLabel)
     setTime(row.time_label || defaultEventDraft.time_label)
     setLocation(row.location || defaultEventDraft.location)
-    setRsvpDate(row.rsvp_deadline || defaultEventDraft.rsvp_deadline)
+    setRsvpDate(nextRsvpDateLabel)
+    setRsvpDeadlineTouched(nextRsvpDateLabel !== getAutoRsvpDeadlineLabel(nextDateLabel))
     setBringNote(row.bring_note || defaultEventDraft.bring_note)
     setHostName(row.host_name || defaultEventDraft.host_name)
     setHostPhone(row.host_phone || defaultEventDraft.host_phone)
@@ -1821,7 +1891,11 @@ function App() {
                     <span>Date</span>
                     <div className="input-shell">
                       <CalendarDays size={22} />
-                      <input value={date} onChange={(event) => setDate(event.target.value)} />
+                      <input
+                        type="date"
+                        value={dateLabelToDateInput(date)}
+                        onChange={(event) => handleEventDateChange(event.target.value)}
+                      />
                     </div>
                   </label>
 
@@ -1846,7 +1920,11 @@ function App() {
                     <span>RSVP Deadline</span>
                     <div className="input-shell">
                       <CalendarDays size={22} />
-                      <input value={rsvpDate} onChange={(event) => setRsvpDate(event.target.value)} />
+                      <input
+                        type="date"
+                        value={dateLabelToDateInput(rsvpDate)}
+                        onChange={(event) => handleRsvpDateChange(event.target.value)}
+                      />
                     </div>
                   </label>
 
