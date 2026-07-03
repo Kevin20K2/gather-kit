@@ -306,7 +306,6 @@ function App() {
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
-  const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Getting latest updates...' : 'Demo mode')
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
 
@@ -514,7 +513,6 @@ function App() {
       if (error) {
         setEventSaveStatus(`Could not load your events: ${error.message}`)
         setEventSaveState('error')
-        setDataStatus('Updates need attention')
         return
       }
 
@@ -569,7 +567,6 @@ function App() {
       if (error) {
         setEventSaveStatus(`Could not load this event: ${error.message}`)
         setEventSaveState('error')
-        setDataStatus('Updates need attention')
         return
       }
 
@@ -632,12 +629,11 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus('Updates need attention')
+        setSubmittedMessage(`Could not load RSVPs: ${error.message}`)
         return
       }
 
       setRsvpRows(data.length > 0 ? (data as RsvpRow[]) : selectedEventSlug === defaultEventSlug ? initialRsvpRows : [])
-      setDataStatus('Live updates on')
     }
 
     loadRsvps()
@@ -652,7 +648,7 @@ function App() {
         },
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setDataStatus('Live updates on')
+        if (status === 'SUBSCRIBED') setSubmittedMessage('')
       })
 
     return () => {
@@ -678,7 +674,7 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus('Updates need attention')
+        setCopiedLabel(`Could not load messages: ${error.message}`)
         return
       }
 
@@ -727,7 +723,7 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus('Updates need attention')
+        setCopiedLabel(`Could not load run sheet: ${error.message}`)
         return
       }
 
@@ -1324,9 +1320,6 @@ function App() {
           <div className="topbar-copy">
             <h2>{topbarTitle}</h2>
             <p>{topbarSubtitle}</p>
-          </div>
-          <div className={isSupabaseConfigured ? 'data-pill connected' : 'data-pill'}>
-            {dataStatus}
           </div>
           {isSupabaseConfigured && (
             <div className="auth-pill">
