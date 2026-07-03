@@ -25,7 +25,7 @@ import {
   UserRoundCheck,
   Users,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import neighborhoodArt from './assets/neighborhood-evening.webp'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabase'
@@ -281,6 +281,7 @@ function App() {
   const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'Checking your session...' : 'Demo mode')
   const [authNotice, setAuthNotice] = useState('')
   const [authSending, setAuthSending] = useState(false)
+  const authCheckVersion = useRef(0)
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
   const [eventType, setEventType] = useState<EventType>(defaultEventDraft.event_type)
@@ -398,12 +399,9 @@ function App() {
 
     let isMounted = true
     const client = supabase
+    const checkVersion = ++authCheckVersion.current
 
-    async function loadSession() {
-      const { data } = await client.auth.getSession()
-      if (!isMounted) return
-
-      const user = data.session?.user
+    function applySignedInUser(user: { id: string; email?: string } | null) {
       setAuthUser(user ? { id: user.id, email: user.email } : null)
       setAuthEmail(user?.email ?? '')
       setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
@@ -414,18 +412,18 @@ function App() {
       }
     }
 
+    async function loadSession() {
+      const { data } = await client.auth.getSession()
+      if (!isMounted || checkVersion !== authCheckVersion.current) return
+
+      applySignedInUser(data.session?.user ?? null)
+    }
+
     loadSession()
 
     const { data } = client.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user
-      setAuthUser(user ? { id: user.id, email: user.email } : null)
-      setAuthEmail(user?.email ?? '')
-      setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
-      if (user?.email) setAuthNotice('')
-
-      if (user?.email && hostEmail === defaultEventDraft.host_email) {
-        setHostEmail(user.email)
-      }
+      authCheckVersion.current += 1
+      applySignedInUser(session?.user ?? null)
     })
 
     return () => {
@@ -1278,13 +1276,27 @@ function App() {
         return
       }
 
-      const signedInUser = result.data.user
-      setAuthUser(signedInUser ? { id: signedInUser.id, email: signedInUser.email } : null)
-      setAuthEmail(signedInUser?.email ?? email)
-      if (signedInUser?.email && hostEmail === defaultEventDraft.host_email) {
+      authCheckVersion.current += 1
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const signedInUser = sessionData.session?.user ?? result.data.session?.user ?? result.data.user
+
+      if (sessionError || !sessionData.session || !signedInUser) {
+        setAuthUser(null)
+        setAuthStatus(
+          sessionError
+            ? `Session error: ${formatAuthError(sessionError)}`
+            : 'Password accepted, but Supabase did not return a signed-in session. Try refreshing the page.',
+        )
+        setAuthNotice('')
+        return
+      }
+
+      setAuthUser({ id: signedInUser.id, email: signedInUser.email })
+      setAuthEmail(signedInUser.email ?? email)
+      if (signedInUser.email && hostEmail === defaultEventDraft.host_email) {
         setHostEmail(signedInUser.email)
       }
-      setAuthStatus(`Signed in as ${email}`)
+      setAuthStatus(`Signed in as ${signedInUser.email ?? email}`)
       setAuthNotice('')
     } catch (error) {
       setAuthStatus(`${authMode === 'sign-up' ? 'Account setup' : 'Sign-in'} error: ${formatAuthError(error)}`)
