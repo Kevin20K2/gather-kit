@@ -21,6 +21,8 @@ If someone opens an unknown `/e/:slug` URL, GatherKit shows an event-not-found s
 
 Organizer tools now require Supabase magic-link sign-in when Supabase is configured. Public RSVP remains open from `/e/:slug`.
 
+Row-level security now keeps event details publicly readable for RSVP links, but host-only writes are enforced for event drafts, message logs, and run sheet task updates. RSVP rows remain public so neighbors can respond without accounts.
+
 ## Next Supabase pass
 
 Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtime slice creates:
@@ -33,8 +35,7 @@ Run `supabase-schema.sql` in your Supabase SQL editor first. The current realtim
 
 ## Roadmap
 
-- Extend the multi-event model into true multiple hosts and host-owned events. Each host should be able to create and manage their own events, while neighbors can RSVP and view the appropriate public event page.
-- Tighten row-level security so hosts can update only their own events once the auth flow feels right.
+- Add an explicit host invite/claim flow for existing events that were created before auth ownership.
 
 Then set these Vercel environment variables:
 

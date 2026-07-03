@@ -376,6 +376,10 @@ function App() {
 
   useEffect(() => {
     if (!supabase) return
+    if (!authUser) {
+      setMessageLog([])
+      return
+    }
 
     let isMounted = true
     const client = supabase
@@ -595,10 +599,14 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [selectedEventSlug])
+  }, [authUser, selectedEventSlug])
 
   useEffect(() => {
     if (!supabase) return
+    if (!authUser) {
+      setCheckedRunTasks([])
+      return
+    }
 
     let isMounted = true
     const client = supabase
@@ -640,7 +648,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [selectedEventSlug])
+  }, [authUser, selectedEventSlug])
 
   useEffect(() => {
     if (!supabase) return
@@ -999,6 +1007,12 @@ function App() {
   }
 
   async function persistMessage(audience: MessageAudience, body: string, count: number) {
+    if (isSupabaseConfigured && !authUser) {
+      setCopiedLabel('Sign in as host to send updates')
+      window.setTimeout(() => setCopiedLabel(''), 2600)
+      return
+    }
+
     const nextMessage: MessageLogItem = {
       audience,
       body,
@@ -1036,6 +1050,12 @@ function App() {
   }
 
   async function toggleRunTask(taskId: string) {
+    if (isSupabaseConfigured && !authUser) {
+      setCopiedLabel('Sign in as host to update run sheet')
+      window.setTimeout(() => setCopiedLabel(''), 2600)
+      return
+    }
+
     const nextCompleted = !checkedRunTasks.includes(taskId)
 
     setCheckedRunTasks((taskIds) =>

@@ -48,27 +48,85 @@ before update on public.gatherkit_hosts
 for each row
 execute function public.set_updated_at();
 
+create or replace function public.gatherkit_is_host_record_owner(p_host_record_id uuid)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.gatherkit_hosts host
+    where host.id = p_host_record_id
+      and auth.uid() is not null
+      and (
+        host.user_id = auth.uid()
+        or host.email = (auth.jwt() ->> 'email')
+      )
+  );
+$$;
+
+create or replace function public.gatherkit_is_event_host(p_event_slug text)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.gatherkit_events event
+    join public.gatherkit_hosts host on host.id = event.host_id
+    where event.slug = p_event_slug
+      and auth.uid() is not null
+      and (
+        host.user_id = auth.uid()
+        or host.email = (auth.jwt() ->> 'email')
+      )
+  );
+$$;
+
 alter table public.gatherkit_hosts enable row level security;
 
 drop policy if exists "gatherkit_hosts_public_read" on public.gatherkit_hosts;
 drop policy if exists "gatherkit_hosts_public_insert" on public.gatherkit_hosts;
 drop policy if exists "gatherkit_hosts_public_update" on public.gatherkit_hosts;
+drop policy if exists "gatherkit_hosts_owner_read" on public.gatherkit_hosts;
+drop policy if exists "gatherkit_hosts_owner_insert" on public.gatherkit_hosts;
+drop policy if exists "gatherkit_hosts_owner_update" on public.gatherkit_hosts;
 
-create policy "gatherkit_hosts_public_read"
+create policy "gatherkit_hosts_owner_read"
 on public.gatherkit_hosts
 for select
-using (true);
+using (
+  auth.uid() is not null
+  and (
+    user_id = auth.uid()
+    or email = (auth.jwt() ->> 'email')
+  )
+);
 
-create policy "gatherkit_hosts_public_insert"
+create policy "gatherkit_hosts_owner_insert"
 on public.gatherkit_hosts
 for insert
-with check (true);
+with check (
+  auth.uid() is not null
+  and user_id = auth.uid()
+  and email = (auth.jwt() ->> 'email')
+);
 
-create policy "gatherkit_hosts_public_update"
+create policy "gatherkit_hosts_owner_update"
 on public.gatherkit_hosts
 for update
-using (true)
-with check (true);
+using (
+  auth.uid() is not null
+  and (
+    user_id = auth.uid()
+    or email = (auth.jwt() ->> 'email')
+  )
+)
+with check (
+  auth.uid() is not null
+  and user_id = auth.uid()
+  and email = (auth.jwt() ->> 'email')
+);
 
 create table if not exists public.gatherkit_events (
   id uuid primary key default gen_random_uuid(),
@@ -100,22 +158,24 @@ alter table public.gatherkit_events enable row level security;
 drop policy if exists "gatherkit_events_public_read" on public.gatherkit_events;
 drop policy if exists "gatherkit_events_public_insert" on public.gatherkit_events;
 drop policy if exists "gatherkit_events_public_update" on public.gatherkit_events;
+drop policy if exists "gatherkit_events_host_insert" on public.gatherkit_events;
+drop policy if exists "gatherkit_events_host_update" on public.gatherkit_events;
 
 create policy "gatherkit_events_public_read"
 on public.gatherkit_events
 for select
 using (true);
 
-create policy "gatherkit_events_public_insert"
+create policy "gatherkit_events_host_insert"
 on public.gatherkit_events
 for insert
-with check (true);
+with check (public.gatherkit_is_host_record_owner(host_id));
 
-create policy "gatherkit_events_public_update"
+create policy "gatherkit_events_host_update"
 on public.gatherkit_events
 for update
-using (true)
-with check (true);
+using (public.gatherkit_is_host_record_owner(host_id))
+with check (public.gatherkit_is_host_record_owner(host_id));
 
 alter table public.gatherkit_event_rsvps enable row level security;
 
@@ -161,22 +221,25 @@ alter table public.gatherkit_event_tasks enable row level security;
 drop policy if exists "gatherkit_event_tasks_public_read" on public.gatherkit_event_tasks;
 drop policy if exists "gatherkit_event_tasks_public_insert" on public.gatherkit_event_tasks;
 drop policy if exists "gatherkit_event_tasks_public_update" on public.gatherkit_event_tasks;
+drop policy if exists "gatherkit_event_tasks_host_read" on public.gatherkit_event_tasks;
+drop policy if exists "gatherkit_event_tasks_host_insert" on public.gatherkit_event_tasks;
+drop policy if exists "gatherkit_event_tasks_host_update" on public.gatherkit_event_tasks;
 
-create policy "gatherkit_event_tasks_public_read"
+create policy "gatherkit_event_tasks_host_read"
 on public.gatherkit_event_tasks
 for select
-using (true);
+using (public.gatherkit_is_event_host(event_slug));
 
-create policy "gatherkit_event_tasks_public_insert"
+create policy "gatherkit_event_tasks_host_insert"
 on public.gatherkit_event_tasks
 for insert
-with check (true);
+with check (public.gatherkit_is_event_host(event_slug));
 
-create policy "gatherkit_event_tasks_public_update"
+create policy "gatherkit_event_tasks_host_update"
 on public.gatherkit_event_tasks
 for update
-using (true)
-with check (true);
+using (public.gatherkit_is_event_host(event_slug))
+with check (public.gatherkit_is_event_host(event_slug));
 
 create table if not exists public.gatherkit_event_messages (
   id uuid primary key default gen_random_uuid(),
@@ -191,16 +254,18 @@ alter table public.gatherkit_event_messages enable row level security;
 
 drop policy if exists "gatherkit_event_messages_public_read" on public.gatherkit_event_messages;
 drop policy if exists "gatherkit_event_messages_public_insert" on public.gatherkit_event_messages;
+drop policy if exists "gatherkit_event_messages_host_read" on public.gatherkit_event_messages;
+drop policy if exists "gatherkit_event_messages_host_insert" on public.gatherkit_event_messages;
 
-create policy "gatherkit_event_messages_public_read"
+create policy "gatherkit_event_messages_host_read"
 on public.gatherkit_event_messages
 for select
-using (true);
+using (public.gatherkit_is_event_host(event_slug));
 
-create policy "gatherkit_event_messages_public_insert"
+create policy "gatherkit_event_messages_host_insert"
 on public.gatherkit_event_messages
 for insert
-with check (true);
+with check (public.gatherkit_is_event_host(event_slug));
 
 do $$
 begin
