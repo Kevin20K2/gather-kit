@@ -386,6 +386,8 @@ function App() {
     : 'Sign in to manage events, or use the public RSVP view.'
 
   useEffect(() => {
+    if (!isPublicEventPath()) return
+
     updateEventUrl(selectedEventSlug, true)
   }, [selectedEventSlug])
 
