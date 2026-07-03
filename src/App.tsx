@@ -303,6 +303,57 @@ function getAutoRsvpDeadlineLabel(eventDateLabel: string) {
   }).format(deadline)
 }
 
+function timeLabelToTimeInput(label: string) {
+  const match = label.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!match) return ''
+
+  let hour = Number(match[1])
+  const minute = match[2]
+  const meridiem = match[3].toUpperCase()
+
+  if (meridiem === 'PM' && hour < 12) hour += 12
+  if (meridiem === 'AM' && hour === 12) hour = 0
+
+  return `${String(hour).padStart(2, '0')}:${minute}`
+}
+
+function timeRangeToInputs(label: string) {
+  const [startLabel = '', endLabel = ''] = label.split(' - ')
+  return {
+    start: timeLabelToTimeInput(startLabel),
+    end: timeLabelToTimeInput(endLabel),
+  }
+}
+
+function formatTimeFromInput(value: string) {
+  const [hourValue, minute = '00'] = value.split(':')
+  const hour24 = Number(hourValue)
+  if (Number.isNaN(hour24)) return ''
+
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM'
+  const hour12 = hour24 % 12 || 12
+  return `${hour12}:${minute} ${meridiem}`
+}
+
+function formatTimeRangeFromInputs(start: string, end: string) {
+  if (!start || !end) return ''
+
+  return `${formatTimeFromInput(start)} - ${formatTimeFromInput(end)}`
+}
+
+function addHoursToTimeInput(value: string, hours: number) {
+  const [hourValue, minuteValue = '0'] = value.split(':')
+  const hour = Number(hourValue)
+  const minute = Number(minuteValue)
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return ''
+
+  const totalMinutes = (hour * 60 + minute + hours * 60) % (24 * 60)
+  const normalizedMinutes = totalMinutes < 0 ? totalMinutes + 24 * 60 : totalMinutes
+  const nextHour = Math.floor(normalizedMinutes / 60)
+  const nextMinute = normalizedMinutes % 60
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`
+}
+
 function isPublicEventPath() {
   return typeof window !== 'undefined' && window.location.pathname.startsWith('/e/')
 }
@@ -341,6 +392,8 @@ function App() {
   const [eventName, setEventName] = useState(defaultEventDraft.name)
   const [date, setDate] = useState(defaultEventDraft.date_label)
   const [time, setTime] = useState(defaultEventDraft.time_label)
+  const [eventStartTime, setEventStartTime] = useState(() => timeRangeToInputs(defaultEventDraft.time_label).start)
+  const [eventEndTime, setEventEndTime] = useState(() => timeRangeToInputs(defaultEventDraft.time_label).end)
   const [location, setLocation] = useState(defaultEventDraft.location)
   const [rsvpDate, setRsvpDate] = useState(defaultEventDraft.rsvp_deadline)
   const [rsvpDeadlineTouched, setRsvpDeadlineTouched] = useState(false)
@@ -846,9 +899,12 @@ function App() {
 
   function handleTypeChange(nextType: EventType) {
     const nextTemplate = eventTemplates.find((item) => item.label === nextType) ?? eventTemplates[0]
+    const templateTime = timeRangeToInputs(nextTemplate.duration)
     setEventType(nextType)
     setEventName(nextTemplate.headline)
     setTime(nextTemplate.duration)
+    setEventStartTime(templateTime.start)
+    setEventEndTime(templateTime.end)
     setLocation(nextTemplate.location)
     setBringNote(nextTemplate.bringNote)
     setSelectedRoles(nextTemplate.roles.slice(0, 2))
@@ -874,6 +930,25 @@ function App() {
     setRsvpDate(nextRsvpDateLabel)
   }
 
+  function handleStartTimeChange(value: string) {
+    const nextEndTime = !eventEndTime || value >= eventEndTime ? addHoursToTimeInput(value, 2) : eventEndTime
+    setEventStartTime(value)
+    setEventEndTime(nextEndTime)
+    setTime(formatTimeRangeFromInputs(value, nextEndTime) || time)
+  }
+
+  function handleEndTimeChange(value: string) {
+    if (!eventStartTime) {
+      setEventEndTime(value)
+      setTime(formatTimeRangeFromInputs(eventStartTime, value) || time)
+      return
+    }
+
+    const nextEndTime = value <= eventStartTime ? addHoursToTimeInput(eventStartTime, 2) : value
+    setEventEndTime(nextEndTime)
+    setTime(formatTimeRangeFromInputs(eventStartTime, nextEndTime) || time)
+  }
+
   function applyEventRow(row: EventRow) {
     const supportedType = eventTemplates.some((item) => item.label === row.event_type)
       ? row.event_type
@@ -885,6 +960,8 @@ function App() {
     setEventName(row.name || defaultEventDraft.name)
     setDate(nextDateLabel)
     setTime(row.time_label || defaultEventDraft.time_label)
+    setEventStartTime(timeRangeToInputs(row.time_label || defaultEventDraft.time_label).start)
+    setEventEndTime(timeRangeToInputs(row.time_label || defaultEventDraft.time_label).end)
     setLocation(row.location || defaultEventDraft.location)
     setRsvpDate(nextRsvpDateLabel)
     setRsvpDeadlineTouched(nextRsvpDateLabel !== getAutoRsvpDeadlineLabel(nextDateLabel))
@@ -1900,10 +1977,26 @@ function App() {
                   </label>
 
                   <label className="field">
-                    <span>Time</span>
+                    <span>Start Time</span>
                     <div className="input-shell">
                       <Clock3 size={22} />
-                      <input value={time} onChange={(event) => setTime(event.target.value)} />
+                      <input
+                        type="time"
+                        value={eventStartTime}
+                        onChange={(event) => handleStartTimeChange(event.target.value)}
+                      />
+                    </div>
+                  </label>
+
+                  <label className="field">
+                    <span>End Time</span>
+                    <div className="input-shell">
+                      <Clock3 size={22} />
+                      <input
+                        type="time"
+                        value={eventEndTime}
+                        onChange={(event) => handleEndTimeChange(event.target.value)}
+                      />
                     </div>
                   </label>
 
