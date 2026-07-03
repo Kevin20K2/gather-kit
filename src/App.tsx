@@ -275,7 +275,8 @@ function App() {
   const [eventLookupState, setEventLookupState] = useState<EventLookupState>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authEmail, setAuthEmail] = useState('')
-  const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'Checking host session...' : 'Local demo mode')
+  const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'Checking your session...' : 'Demo mode')
+  const [authNotice, setAuthNotice] = useState('')
   const [authSending, setAuthSending] = useState(false)
   const [localDataReady, setLocalDataReady] = useState(isSupabaseConfigured)
   const [activeStep, setActiveStep] = useState<PlanningStep>('Details')
@@ -302,7 +303,7 @@ function App() {
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
-  const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Connecting to Supabase...' : 'Local demo mode')
+  const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? 'Getting latest updates...' : 'Demo mode')
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
 
@@ -360,6 +361,11 @@ function App() {
   const isHostMode = appMode !== 'Neighbor RSVP'
   const shouldShowAuthGate = isHostMode && !isHostSignedIn
   const hostEmailLabel = authUser?.email ?? 'Host'
+  const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
+  const topbarTitle = authUser ? `Hello, ${greetingName}` : 'Welcome'
+  const topbarSubtitle = authUser
+    ? 'Here is what is happening in your neighborhood.'
+    : 'Sign in to manage events, or use the public RSVP view.'
 
   useEffect(() => {
     updateEventUrl(selectedEventSlug, true)
@@ -392,6 +398,7 @@ function App() {
       setAuthUser(user ? { id: user.id, email: user.email } : null)
       setAuthEmail(user?.email ?? '')
       setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
+      if (user?.email) setAuthNotice('')
 
       if (user?.email && hostEmail === defaultEventDraft.host_email) {
         setHostEmail(user.email)
@@ -405,6 +412,7 @@ function App() {
       setAuthUser(user ? { id: user.id, email: user.email } : null)
       setAuthEmail(user?.email ?? '')
       setAuthStatus(user?.email ? `Signed in as ${user.email}` : 'Host sign-in required')
+      if (user?.email) setAuthNotice('')
 
       if (user?.email && hostEmail === defaultEventDraft.host_email) {
         setHostEmail(user.email)
@@ -501,9 +509,9 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setEventSaveStatus(`Event list sync error: ${error.message}`)
+        setEventSaveStatus(`Could not load your events: ${error.message}`)
         setEventSaveState('error')
-        setDataStatus(`Supabase error: ${error.message}`)
+        setDataStatus('Updates need attention')
         return
       }
 
@@ -515,7 +523,7 @@ function App() {
 
       setEventRows([])
       if (selectedEventSlug === defaultEventSlug) {
-        await saveEventDetails('Event draft created in Supabase')
+        await saveEventDetails('Event draft created')
       }
     }
 
@@ -556,15 +564,15 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setEventSaveStatus(`Event sync error: ${error.message}`)
+        setEventSaveStatus(`Could not load this event: ${error.message}`)
         setEventSaveState('error')
-        setDataStatus(`Supabase error: ${error.message}`)
+        setDataStatus('Updates need attention')
         return
       }
 
       if (data) {
         applyEventRow(data as EventRow)
-        setEventSaveStatus('Event loaded from Supabase')
+        setEventSaveStatus('Event loaded')
         setEventSaveState('saved')
         setEventLookupState('found')
         return
@@ -621,12 +629,12 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus(`Supabase error: ${error.message}`)
+        setDataStatus('Updates need attention')
         return
       }
 
       setRsvpRows(data.length > 0 ? (data as RsvpRow[]) : selectedEventSlug === defaultEventSlug ? initialRsvpRows : [])
-      setDataStatus('Supabase realtime connected')
+      setDataStatus('Live updates on')
     }
 
     loadRsvps()
@@ -641,7 +649,7 @@ function App() {
         },
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setDataStatus('Supabase realtime connected')
+        if (status === 'SUBSCRIBED') setDataStatus('Live updates on')
       })
 
     return () => {
@@ -667,7 +675,7 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus(`Supabase error: ${error.message}`)
+        setDataStatus('Updates need attention')
         return
       }
 
@@ -716,7 +724,7 @@ function App() {
       if (!isMounted) return
 
       if (error) {
-        setDataStatus(`Supabase error: ${error.message}`)
+        setDataStatus('Updates need attention')
         return
       }
 
@@ -986,12 +994,12 @@ function App() {
       )
 
       if (error) {
-        setSubmittedMessage(`Supabase error: ${error.message}`)
+        setSubmittedMessage(`Could not save RSVP: ${error.message}`)
         window.setTimeout(() => setSubmittedMessage(''), 3200)
         return
       }
 
-      setSubmittedMessage(`${nextRow.name}'s RSVP is live in Supabase.`)
+      setSubmittedMessage(`${nextRow.name}'s RSVP is saved.`)
       window.setTimeout(() => setSubmittedMessage(''), 2400)
       return
     }
@@ -1113,12 +1121,15 @@ function App() {
 
       if (error) {
         setAuthStatus(`Sign-in error: ${formatAuthError(error)}`)
+        setAuthNotice('')
         return
       }
 
       setAuthStatus(`Magic link sent to ${email}`)
+      setAuthNotice('Check your email for the sign-in link.')
     } catch (error) {
       setAuthStatus(`Sign-in error: ${formatAuthError(error)}`)
+      setAuthNotice('')
     } finally {
       setAuthSending(false)
     }
@@ -1130,6 +1141,7 @@ function App() {
     await supabase.auth.signOut()
     setAuthUser(null)
     setAuthStatus('Signed out')
+    setAuthNotice('')
     setAppMode('Neighbor RSVP')
     setActiveNavLabel('Neighbors')
   }
@@ -1265,8 +1277,8 @@ function App() {
             <Menu />
           </button>
           <div className="topbar-copy">
-            <h2>Hello, Jordan</h2>
-            <p>Here is what is happening in your neighborhood.</p>
+            <h2>{topbarTitle}</h2>
+            <p>{topbarSubtitle}</p>
           </div>
           <div className={isSupabaseConfigured ? 'data-pill connected' : 'data-pill'}>
             {dataStatus}
@@ -1289,6 +1301,7 @@ function App() {
                   <button disabled={authSending} onClick={sendMagicLink} type="button">
                     {authSending ? 'Sending...' : 'Sign in'}
                   </button>
+                  {authNotice && <strong>{authNotice}</strong>}
                 </>
               )}
             </div>
@@ -1640,7 +1653,7 @@ function App() {
                   <button
                     className="primary-action"
                     disabled={eventSaveState === 'saving'}
-                    onClick={() => saveEventDetails('Event published in Supabase')}
+                    onClick={() => saveEventDetails('Event published')}
                     type="button"
                   >
                     Publish Event

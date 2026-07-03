@@ -220,6 +220,16 @@
   padding-left: 8px;
 }
 
+.auth-pill strong {
+  max-width: 210px;
+  color: #087f5b;
+  font-size: 12px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .auth-pill button {
   min-height: 32px;
   border: 0;
