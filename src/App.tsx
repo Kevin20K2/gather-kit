@@ -4690,7 +4690,7 @@ function App() {
                 <p>{openRunSheetTasks.length} open tasks / {stillNeededSupplies.length} supplies open / {missingRoles.length} roles unfilled</p>
               </article>
               <button
-                className="secondary-action"
+                className="secondary-action run-sheet-action"
                 disabled={runSheetSendState === 'saving'}
                 onClick={() =>
                   sendRunSheetUpdate(
@@ -4702,13 +4702,13 @@ function App() {
               >
                 <Send size={18} />
                 {runSheetSendLabel === 'Setup Reminder' && runSheetSendState === 'saving'
-                  ? 'Sending...'
+                  ? 'Sending'
                   : runSheetSendLabel === 'Setup Reminder' && runSheetSendState === 'saved'
-                    ? 'Setup Sent'
+                    ? 'Sent'
                     : 'Setup Reminder'}
               </button>
               <button
-                className="primary-action"
+                className="primary-action run-sheet-action"
                 disabled={runSheetSendState === 'saving'}
                 onClick={() =>
                   sendRunSheetUpdate(
@@ -4719,9 +4719,9 @@ function App() {
                 type="button"
               >
                 {runSheetSendLabel === 'Cleanup Update' && runSheetSendState === 'saving'
-                  ? 'Sending...'
+                  ? 'Sending'
                   : runSheetSendLabel === 'Cleanup Update' && runSheetSendState === 'saved'
-                    ? 'Cleanup Sent'
+                    ? 'Sent'
                     : 'Cleanup Update'}
                 <Send size={18} />
               </button>
