@@ -2045,6 +2045,12 @@
   color: #8a4b00;
 }
 
+.event-card-archive.confirm-delete {
+  border-color: #f2b6a3;
+  background: #fff2ec;
+  color: #9b3d12;
+}
+
 .inline-card-action.success {
   border-color: #a7e2c5;
   background: #ecfbf2;
