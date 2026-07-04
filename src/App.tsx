@@ -537,7 +537,7 @@ function App() {
       normalizedEventHostEmail &&
       normalizedEventHostEmail !== normalizedSignedInEmail,
   )
-  const shouldShowOwnershipGate = isHostMode && appMode !== 'Events' && isDifferentHostEvent
+  const shouldShowOwnershipGate = isHostMode && appMode !== 'Events' && appMode !== 'Settings' && isDifferentHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
   const topbarProfileName = hostProfileName.trim() || getDefaultHostName(authUser?.email)
