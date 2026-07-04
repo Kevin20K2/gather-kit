@@ -253,24 +253,6 @@ function createRoleItems(roles: string[]): RoleItem[] {
   return roles.map((name) => ({ name, quantity: 1 }))
 }
 
-function mergeSupplyItems(savedItems: SupplyItem[], templateSupplies: string[]): SupplyItem[] {
-  const normalizedSavedNames = new Set(savedItems.map((item) => item.name.trim().toLowerCase()))
-  const missingTemplateItems: SupplyItem[] = templateSupplies
-    .filter((name) => !normalizedSavedNames.has(name.trim().toLowerCase()))
-    .map((name) => ({ name, quantity: 1 }))
-
-  return [...savedItems, ...missingTemplateItems]
-}
-
-function mergeRoleItems(savedItems: RoleItem[], templateRoles: string[]): RoleItem[] {
-  const normalizedSavedNames = new Set(savedItems.map((item) => item.name.trim().toLowerCase()))
-  const missingTemplateItems: RoleItem[] = templateRoles
-    .filter((name) => !normalizedSavedNames.has(name.trim().toLowerCase()))
-    .map((name) => ({ name, quantity: 1 }))
-
-  return [...savedItems, ...missingTemplateItems]
-}
-
 function normalizeSavedItems(value: unknown): SupplyItem[] {
   if (!Array.isArray(value)) return []
 
@@ -1182,13 +1164,7 @@ function App() {
         return
       }
 
-      const savedItems = data as SupplyItem[]
-      const nextItems = mergeSupplyItems(savedItems, template.supplies)
-      setSupplyItems(nextItems)
-
-      if (nextItems.length > savedItems.length) {
-        syncSupplyItemsForEvent(selectedEventSlug, nextItems.filter((item) => !item.id))
-      }
+      setSupplyItems(data as SupplyItem[])
     }
 
     loadSupplies()
@@ -1291,13 +1267,7 @@ function App() {
         return
       }
 
-      const savedItems = data as RoleItem[]
-      const nextItems = mergeRoleItems(savedItems, template.roles)
-      setRoleItems(nextItems)
-
-      if (nextItems.length > savedItems.length) {
-        syncRoleItemsForEvent(selectedEventSlug, nextItems.filter((item) => !item.id))
-      }
+      setRoleItems(data as RoleItem[])
     }
 
     loadRoles()
@@ -2341,13 +2311,13 @@ function App() {
     if (!trimmedName) return
 
     const nextItem: SupplyItem = { name: trimmedName, quantity: 1 }
-    const nextItems = mergeSupplyItems([...supplyItems, nextItem], template.supplies)
+    const nextItems = [...supplyItems, nextItem]
     setSupplyItems(nextItems)
     setNewSupplyName('')
 
     if (!supabase) return
 
-    const rowsToSync = nextItems.filter((item) => !item.id)
+    const rowsToSync = [nextItem]
     if (rowsToSync.length === 0) return
 
     const { error } = await supabase.from('gatherkit_event_supplies').upsert(
@@ -2443,13 +2413,13 @@ function App() {
     if (!trimmedName) return
 
     const nextItem: RoleItem = { name: trimmedName, quantity: 1 }
-    const nextItems = mergeRoleItems([...roleItems, nextItem], template.roles)
+    const nextItems = [...roleItems, nextItem]
     setRoleItems(nextItems)
     setNewRoleName('')
 
     if (!supabase) return
 
-    const rowsToSync = nextItems.filter((item) => !item.id)
+    const rowsToSync = [nextItem]
     if (rowsToSync.length === 0) return
 
     const { error } = await supabase.from('gatherkit_event_roles').upsert(
