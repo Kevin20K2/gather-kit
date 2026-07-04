@@ -594,6 +594,11 @@ function App() {
   const draftEventCount = activeEventRows.filter((row) => (row.status ?? 'draft') === 'draft').length
   const publishedEventCount = activeEventRows.filter((row) => row.status === 'published').length
   const nextDashboardEvent = activeEventRows[0] ?? null
+  const eventListTitle = eventListView === 'active' ? 'Active event plans' : 'Event history'
+  const eventListDescription =
+    eventListView === 'active'
+      ? 'Current drafts and published event links live here while hosts are still planning or collecting RSVPs.'
+      : 'Past events stay here as a reference. Duplicate one when you want to run the same gathering again.'
 
   const completeTasks = template.tasks.slice(0, 3)
   const openTasks = template.tasks.slice(3)
@@ -3465,6 +3470,25 @@ function App() {
               </button>
             </div>
 
+            <div className={eventListView === 'history' ? 'event-list-context history' : 'event-list-context'}>
+              <div>
+                <span>{eventListView === 'active' ? 'Now Planning' : 'Past Gatherings'}</span>
+                <h3>{eventListTitle}</h3>
+                <p>{eventListDescription}</p>
+              </div>
+              {eventListView === 'history' ? (
+                <button className="secondary-action" onClick={() => setEventListView('active')} type="button">
+                  Back to Active
+                  <ChevronRight size={19} />
+                </button>
+              ) : (
+                <button className="secondary-action" onClick={() => setEventListView('history')} type="button">
+                  View History
+                  <ChevronRight size={19} />
+                </button>
+              )}
+            </div>
+
             <section className="template-library" aria-label="Saved event templates">
               <div className="section-heading">
                 <div>
@@ -3560,7 +3584,13 @@ function App() {
               <div className="events-grid">
                 {visibleEventRows.map((row) => (
                   <article
-                    className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
+                    className={[
+                      'event-card',
+                      row.slug === selectedEventSlug ? 'selected' : '',
+                      row.status === 'archived' ? 'archived-card' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     key={row.slug}
                   >
                     <span className="event-card-badges">
@@ -3585,23 +3615,35 @@ function App() {
                     <span className="event-card-host">Host: {row.host_name}</span>
                     <span className="event-card-actions">
                       <button className="event-card-action" onClick={() => selectEvent(row)} type="button">
-                        Open planner
+                        {row.status === 'archived' ? 'View Details' : 'Open Planner'}
                         <ChevronRight size={17} />
                       </button>
-                      <button className="event-card-duplicate" onClick={() => duplicateEvent(row)} type="button">
-                        <Copy size={16} />
-                        Duplicate
-                      </button>
                       {row.status === 'archived' ? (
-                        <button className="event-card-duplicate" onClick={() => updateEventStatus(row, 'draft')} type="button">
-                          <CheckCircle2 size={16} />
-                          Restore
-                        </button>
+                        <>
+                          <button className="event-card-duplicate" onClick={() => duplicateEvent(row, 'weekly')} type="button">
+                            <Copy size={16} />
+                            Plan Again Weekly
+                          </button>
+                          <button className="event-card-duplicate" onClick={() => duplicateEvent(row, 'monthly')} type="button">
+                            <CalendarDays size={16} />
+                            Plan Again Monthly
+                          </button>
+                          <button className="event-card-duplicate" onClick={() => updateEventStatus(row, 'draft')} type="button">
+                            <CheckCircle2 size={16} />
+                            Restore to Active
+                          </button>
+                        </>
                       ) : (
-                        <button className="event-card-archive" onClick={() => updateEventStatus(row, 'archived')} type="button">
-                          <FileText size={16} />
-                          Archive
-                        </button>
+                        <>
+                          <button className="event-card-duplicate" onClick={() => duplicateEvent(row)} type="button">
+                            <Copy size={16} />
+                            Duplicate
+                          </button>
+                          <button className="event-card-archive" onClick={() => updateEventStatus(row, 'archived')} type="button">
+                            <FileText size={16} />
+                            Move to History
+                          </button>
+                        </>
                       )}
                     </span>
                   </article>
