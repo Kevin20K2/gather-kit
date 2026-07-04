@@ -229,6 +229,15 @@ function createSupplyItems(supplies: string[]): SupplyItem[] {
   return supplies.map((name) => ({ name, quantity: 1 }))
 }
 
+function mergeSupplyItems(savedItems: SupplyItem[], templateSupplies: string[]): SupplyItem[] {
+  const normalizedSavedNames = new Set(savedItems.map((item) => item.name.trim().toLowerCase()))
+  const missingTemplateItems: SupplyItem[] = templateSupplies
+    .filter((name) => !normalizedSavedNames.has(name.trim().toLowerCase()))
+    .map((name) => ({ name, quantity: 1 }))
+
+  return [...savedItems, ...missingTemplateItems]
+}
+
 const defaultEventSlug = 'neighborhood-event'
 const defaultEventDraft: EventRow = {
   slug: defaultEventSlug,
@@ -1076,7 +1085,13 @@ function App() {
         return
       }
 
-      setSupplyItems(data.length > 0 ? (data as SupplyItem[]) : createSupplyItems(template.supplies))
+      const savedItems = data as SupplyItem[]
+      const nextItems = mergeSupplyItems(savedItems, template.supplies)
+      setSupplyItems(nextItems)
+
+      if (nextItems.length > savedItems.length) {
+        syncSupplyItemsForEvent(selectedEventSlug, nextItems.filter((item) => !item.id))
+      }
     }
 
     loadSupplies()
@@ -1874,16 +1889,23 @@ function App() {
     if (!trimmedName) return
 
     const nextItem: SupplyItem = { name: trimmedName, quantity: 1 }
-    setSupplyItems((items) => [...items, nextItem])
+    const nextItems = mergeSupplyItems([...supplyItems, nextItem], template.supplies)
+    setSupplyItems(nextItems)
     setNewSupplyName('')
 
     if (!supabase) return
 
-    const { error } = await supabase.from('gatherkit_event_supplies').insert({
-      event_slug: selectedEventSlug,
-      name: nextItem.name,
-      quantity: nextItem.quantity,
-    })
+    const rowsToSync = nextItems.filter((item) => !item.id)
+    if (rowsToSync.length === 0) return
+
+    const { error } = await supabase.from('gatherkit_event_supplies').upsert(
+      rowsToSync.map((item) => ({
+        event_slug: selectedEventSlug,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+      { onConflict: 'event_slug,name' },
+    )
 
     if (isMissingSuppliesTable(error)) {
       setEventSaveStatus('Run the updated Supabase SQL to sync supply lists.')
