@@ -40,7 +40,7 @@ type EventType =
   | 'Custom'
 
 type PlanningStep = 'Details' | 'Invite' | 'Review'
-type AppMode = 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP'
+type AppMode = 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP' | 'Settings'
 type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -205,7 +205,7 @@ const navItems = [
   { label: 'Neighbors', icon: Users, mode: 'Neighbor RSVP' as AppMode },
   { label: 'Messages', icon: MessageSquare, mode: 'Message Center' as AppMode },
   { label: 'Checklists', icon: ClipboardList, mode: 'Run Sheet' as AppMode },
-  { label: 'Settings', icon: Settings, mode: 'Organizer' as AppMode },
+  { label: 'Settings', icon: Settings, mode: 'Settings' as AppMode },
 ]
 
 const initialRsvpRows: RsvpRow[] = [
@@ -242,6 +242,10 @@ function getEventUrl(slug: string) {
   if (typeof window === 'undefined') return `/e/${slug}`
 
   return `${window.location.origin}/e/${encodeURIComponent(slug)}`
+}
+
+function getDefaultHostName(email?: string) {
+  return email?.split('@')[0] || defaultEventDraft.host_name
 }
 
 function updateEventUrl(slug: string, replace = false) {
@@ -412,6 +416,7 @@ function navLabelForInitialMode(mode: AppMode) {
   if (mode === 'Message Center') return 'Messages'
   if (mode === 'Run Sheet') return 'Checklists'
   if (mode === 'Neighbor RSVP') return 'Neighbors'
+  if (mode === 'Settings') return 'Settings'
   return 'Dashboard'
 }
 
@@ -445,6 +450,10 @@ function App() {
   const [hostName, setHostName] = useState(defaultEventDraft.host_name)
   const [hostEmail, setHostEmail] = useState(defaultEventDraft.host_email)
   const [hostPhone, setHostPhone] = useState(defaultEventDraft.host_phone)
+  const [hostProfileName, setHostProfileName] = useState(defaultEventDraft.host_name)
+  const [hostProfilePhone, setHostProfilePhone] = useState(defaultEventDraft.host_phone)
+  const [profileSaveStatus, setProfileSaveStatus] = useState('Profile ready')
+  const [profileSaveState, setProfileSaveState] = useState<SaveState>('idle')
   const [eventStatus, setEventStatus] = useState<EventStatus>(defaultEventDraft.status ?? 'draft')
   const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
@@ -531,8 +540,8 @@ function App() {
   const shouldShowOwnershipGate = isHostMode && appMode !== 'Events' && isDifferentHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
-  const profileName = authUser?.email ? authUser.email.split('@')[0] : 'Jordan'
-  const profileInitials = profileName.slice(0, 2).toUpperCase()
+  const topbarProfileName = hostProfileName.trim() || getDefaultHostName(authUser?.email)
+  const profileInitials = topbarProfileName.slice(0, 2).toUpperCase()
   const topbarTitle = authUser ? `Hello, ${greetingName}` : 'Welcome'
   const topbarSubtitle = authUser
     ? 'Here is what is happening in your neighborhood.'
@@ -621,6 +630,58 @@ function App() {
       data.subscription.unsubscribe()
     }
   }, [hostEmail])
+
+  useEffect(() => {
+    if (!supabase || !authUser?.email) {
+      setHostProfileName(defaultEventDraft.host_name)
+      setHostProfilePhone(defaultEventDraft.host_phone)
+      setProfileSaveStatus('Profile ready')
+      setProfileSaveState('idle')
+      return
+    }
+
+    let isMounted = true
+    const client = supabase
+    const signedInEmail = authUser.email
+
+    async function loadHostProfile() {
+      setProfileSaveStatus('Loading host profile...')
+      setProfileSaveState('saving')
+
+      const { data, error } = await client
+        .from('gatherkit_hosts')
+        .select('display_name,email,phone')
+        .eq('email', signedInEmail)
+        .maybeSingle()
+
+      if (!isMounted) return
+
+      if (error) {
+        setHostProfileName(getDefaultHostName(signedInEmail))
+        setHostProfilePhone('')
+        setProfileSaveStatus(`Profile load error: ${error.message}`)
+        setProfileSaveState('error')
+        return
+      }
+
+      const nextName = data?.display_name || getDefaultHostName(signedInEmail)
+      const nextPhone = data?.phone || ''
+      setHostProfileName(nextName)
+      setHostProfilePhone(nextPhone)
+      setProfileSaveStatus(data ? 'Profile loaded' : 'Profile ready')
+      setProfileSaveState(data ? 'saved' : 'idle')
+
+      if (hostEmail === defaultEventDraft.host_email) setHostEmail(signedInEmail)
+      if (hostName === defaultEventDraft.host_name) setHostName(nextName)
+      if (hostPhone === defaultEventDraft.host_phone) setHostPhone(nextPhone || defaultEventDraft.host_phone)
+    }
+
+    loadHostProfile()
+
+    return () => {
+      isMounted = false
+    }
+  }, [authUser?.email])
 
   useEffect(() => {
     if (!isSupabaseConfigured && localDataReady) {
@@ -1103,9 +1164,9 @@ function App() {
       .upsert(
         {
           user_id: authUser?.id,
-          display_name: eventDraft.host_name,
+          display_name: hostProfileName.trim() || eventDraft.host_name,
           email: eventDraft.host_email,
-          phone: eventDraft.host_phone,
+          phone: hostProfilePhone.trim() || eventDraft.host_phone,
         },
         { onConflict: 'email' },
       )
@@ -1190,9 +1251,9 @@ function App() {
       .upsert(
         {
           user_id: authUser?.id,
-          display_name: draft.host_name,
+          display_name: hostProfileName.trim() || draft.host_name,
           email: draft.host_email,
-          phone: draft.host_phone,
+          phone: hostProfilePhone.trim() || draft.host_phone,
         },
         { onConflict: 'email' },
       )
@@ -1279,9 +1340,9 @@ function App() {
       .upsert(
         {
           user_id: authUser?.id,
-          display_name: draft.host_name,
+          display_name: hostProfileName.trim() || draft.host_name,
           email: draft.host_email,
-          phone: draft.host_phone,
+          phone: hostProfilePhone.trim() || draft.host_phone,
         },
         { onConflict: 'email' },
       )
@@ -1371,9 +1432,9 @@ function App() {
       .upsert(
         {
           user_id: authUser?.id,
-          display_name: draft.host_name,
+          display_name: hostProfileName.trim() || draft.host_name,
           email: draft.host_email,
-          phone: draft.host_phone,
+          phone: hostProfilePhone.trim() || draft.host_phone,
         },
         { onConflict: 'email' },
       )
@@ -1657,6 +1718,49 @@ function App() {
     setMenuOpen(false)
   }
 
+  async function saveHostProfile() {
+    const signedInEmail = authUser?.email
+    if (isSupabaseConfigured && (!signedInEmail || !supabase)) {
+      setProfileSaveStatus('Sign in to save your host profile.')
+      setProfileSaveState('error')
+      return
+    }
+
+    const nextName = hostProfileName.trim() || getDefaultHostName(signedInEmail)
+    const nextPhone = hostProfilePhone.trim()
+
+    setHostProfileName(nextName)
+    setHostProfilePhone(nextPhone)
+    setProfileSaveStatus('Saving host profile...')
+    setProfileSaveState('saving')
+
+    if (!supabase) {
+      window.localStorage.setItem('gatherkit-host-profile', JSON.stringify({ display_name: nextName, phone: nextPhone }))
+      setProfileSaveStatus('Host profile saved locally')
+      setProfileSaveState('saved')
+      return
+    }
+
+    const { error } = await supabase.from('gatherkit_hosts').upsert(
+      {
+        user_id: authUser?.id,
+        display_name: nextName,
+        email: signedInEmail,
+        phone: nextPhone,
+      },
+      { onConflict: 'email' },
+    )
+
+    if (error) {
+      setProfileSaveStatus(`Profile sync error: ${error.message}`)
+      setProfileSaveState('error')
+      return
+    }
+
+    setProfileSaveStatus('Host profile saved')
+    setProfileSaveState('saved')
+  }
+
   async function sendMagicLink() {
     const email = authEmail.trim()
     if (!email || !supabase) return
@@ -1765,6 +1869,7 @@ function App() {
     if (mode === 'Message Center') return 'Messages'
     if (mode === 'Run Sheet') return 'Checklists'
     if (mode === 'Neighbor RSVP') return 'Neighbors'
+    if (mode === 'Settings') return 'Settings'
     return 'Dashboard'
   }
 
@@ -1817,8 +1922,8 @@ function App() {
       location: nextTemplate.location,
       rsvp_deadline: defaultEventDraft.rsvp_deadline,
       bring_note: nextTemplate.bringNote,
-      host_name: hostName.trim() || defaultEventDraft.host_name,
-      host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
+      host_name: hostProfileName.trim() || hostName.trim() || getDefaultHostName(authUser?.email),
+      host_phone: hostProfilePhone.trim() || hostPhone.trim() || defaultEventDraft.host_phone,
       host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
       status: 'draft',
     }
@@ -1970,7 +2075,7 @@ function App() {
             </button>
             <div className="profile-chip">
               <div className="avatar">{profileInitials}</div>
-              <span>{profileName}</span>
+              <span>{topbarProfileName}</span>
               <ChevronDown size={18} />
             </div>
           </div>}
@@ -2200,6 +2305,75 @@ function App() {
                 )}
               </div>
             )}
+          </section>
+        ) : appMode === 'Settings' ? (
+          <section className="settings-workspace" aria-label="Host settings">
+            <div className="settings-panel">
+              <div className="section-heading settings-heading">
+                <div className="heading-icon">
+                  <Settings />
+                </div>
+                <div>
+                  <span className="eyebrow">Host Profile</span>
+                  <h2>Keep your organizer details ready.</h2>
+                  <p>New event drafts will use this profile by default. You can still edit contact details on each event.</p>
+                </div>
+              </div>
+
+              <div className="settings-grid">
+                <label className="field">
+                  Display Name
+                  <div className="input-shell">
+                    <UserRoundCheck size={22} />
+                    <input
+                      value={hostProfileName}
+                      onChange={(event) => setHostProfileName(event.target.value)}
+                      placeholder="Your name"
+                    />
+                  </div>
+                </label>
+                <label className="field">
+                  Phone
+                  <div className="input-shell">
+                    <Users size={22} />
+                    <input
+                      value={hostProfilePhone}
+                      onChange={(event) => setHostProfilePhone(event.target.value)}
+                      placeholder="Phone number"
+                    />
+                  </div>
+                </label>
+                <label className="field wide">
+                  Login Email
+                  <div className="input-shell readonly-shell">
+                    <Mail size={22} />
+                    <input value={authUser?.email ?? ''} readOnly />
+                  </div>
+                </label>
+              </div>
+
+              <div className="profile-preview">
+                <span>New event default</span>
+                <strong>{hostProfileName.trim() || getDefaultHostName(authUser?.email)}</strong>
+                <p>
+                  {hostProfilePhone.trim() || 'No phone added'} / {authUser?.email ?? 'No email'}
+                </p>
+              </div>
+
+              <div className="save-row">
+                <div className={`saved-state ${profileSaveState}`}>
+                  <CheckCircle2 />
+                  <div>
+                    <span>{profileSaveStatus}</span>
+                    <small>Used when you create your next event draft.</small>
+                  </div>
+                </div>
+                <button className="primary-action" onClick={saveHostProfile} type="button">
+                  Save Profile
+                  <Check size={19} />
+                </button>
+              </div>
+            </div>
           </section>
         ) : appMode === 'Organizer' ? (
         <>
