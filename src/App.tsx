@@ -887,6 +887,17 @@ function App() {
         return
       }
 
+      const optimisticEvent = eventRows.find((row) => row.slug === selectedEventSlug)
+      if (optimisticEvent) {
+        applyEventRow(optimisticEvent)
+        setEventLookupState('found')
+        if (eventSaveState !== 'saving') {
+          setEventSaveStatus('Event draft ready')
+          setEventSaveState('saved')
+        }
+        return
+      }
+
       setEventLookupState('missing')
       setRsvpRows([])
       setCheckedRunTasks([])
@@ -916,7 +927,7 @@ function App() {
       isMounted = false
       client.removeChannel(channel)
     }
-  }, [authUser, selectedEventSlug])
+  }, [authUser, selectedEventSlug, eventRows, eventSaveState])
 
   useEffect(() => {
     if (!supabase) return
@@ -2223,7 +2234,7 @@ function App() {
               </div>
               <div className="missing-actions">
                 <button className="primary-action" onClick={createEventFromCurrentLink} type="button">
-                  Create This Event
+                  Create Blank Event
                   <PlusCircle size={19} />
                 </button>
                 <button className="secondary-action" onClick={() => selectNavItem('Events', 'Events')} type="button">
