@@ -98,6 +98,20 @@ type RoleItem = {
   quantity: number
 }
 
+type SavedEventTemplate = {
+  id?: string
+  host_email: string
+  name: string
+  event_type: EventType
+  time_label: string
+  location: string
+  bring_note: string
+  supplies: SupplyItem[]
+  roles: RoleItem[]
+  created_at?: string
+  updated_at?: string
+}
+
 type EventRow = {
   slug: string
   event_type: EventType
@@ -255,6 +269,25 @@ function mergeRoleItems(savedItems: RoleItem[], templateRoles: string[]): RoleIt
     .map((name) => ({ name, quantity: 1 }))
 
   return [...savedItems, ...missingTemplateItems]
+}
+
+function normalizeSavedItems(value: unknown): SupplyItem[] {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const maybeItem = item as { name?: unknown; quantity?: unknown }
+      const name = typeof maybeItem.name === 'string' ? maybeItem.name.trim() : ''
+      const quantity = Number(maybeItem.quantity)
+      if (!name) return null
+      return { name, quantity: Number.isFinite(quantity) ? Math.max(1, quantity) : 1 }
+    })
+    .filter((item): item is SupplyItem => Boolean(item))
+}
+
+function templateDisplayName(name: string) {
+  return name.trim() || 'Saved Event Template'
 }
 
 const defaultEventSlug = 'neighborhood-event'
@@ -469,6 +502,15 @@ function isMissingRolesTable(error: { message?: string; code?: string } | null) 
   )
 }
 
+function isMissingTemplatesTable(error: { message?: string; code?: string } | null) {
+  return Boolean(
+    error &&
+      (error.code === '42P01' ||
+        error.message?.toLowerCase().includes('gatherkit_event_templates') ||
+        error.message?.toLowerCase().includes('could not find the table')),
+  )
+}
+
 function eventRowWithoutStatus(row: EventRow) {
   return {
     slug: row.slug,
@@ -551,6 +593,7 @@ function App() {
   const [roleItems, setRoleItems] = useState<RoleItem[]>(() => createRoleItems(eventTemplates[0].roles))
   const [newRoleName, setNewRoleName] = useState('')
   const [eventListView, setEventListView] = useState<EventListView>('active')
+  const [savedTemplates, setSavedTemplates] = useState<SavedEventTemplate[]>([])
 
   const template = useMemo(
     () => eventTemplates.find((item) => item.label === eventType) ?? eventTemplates[0],
@@ -1166,6 +1209,60 @@ function App() {
       client.removeChannel(channel)
     }
   }, [selectedEventSlug, eventType])
+
+  useEffect(() => {
+    if (!supabase || !authUser?.email) {
+      setSavedTemplates([])
+      return
+    }
+
+    let isMounted = true
+    const client = supabase
+
+    async function loadTemplates() {
+      const { data, error } = await client
+        .from('gatherkit_event_templates')
+        .select('id,host_email,name,event_type,time_label,location,bring_note,supplies,roles,created_at,updated_at')
+        .eq('host_email', authUser?.email)
+        .order('updated_at', { ascending: false })
+
+      if (!isMounted) return
+
+      if (isMissingTemplatesTable(error)) {
+        setSavedTemplates([])
+        return
+      }
+
+      if (error) {
+        setEventSaveStatus(`Could not load templates: ${error.message}`)
+        setEventSaveState('error')
+        setSavedTemplates([])
+        return
+      }
+
+      setSavedTemplates(
+        (data ?? []).map((row) => ({
+          ...(row as Omit<SavedEventTemplate, 'supplies' | 'roles'>),
+          supplies: normalizeSavedItems((row as { supplies?: unknown }).supplies),
+          roles: normalizeSavedItems((row as { roles?: unknown }).roles),
+        })),
+      )
+    }
+
+    loadTemplates()
+
+    const channel = client
+      .channel(`event-templates-${authUser.email}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gatherkit_event_templates' }, () => {
+        loadTemplates()
+      })
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [authUser?.email])
 
   useEffect(() => {
     if (!supabase) return
@@ -1823,6 +1920,218 @@ function App() {
     await syncSupplyItemsForEvent(slug, duplicatedSupplies)
     await syncRoleItemsForEvent(slug, duplicatedRoles)
     setEventSaveStatus(`Event duplicated ${interval === 'monthly' ? 'one month' : 'one week'} later as a new draft`)
+  }
+
+  async function saveCurrentAsTemplate() {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to save event templates.')
+      setAppMode('Events')
+      setActiveNavLabel('Events')
+      return
+    }
+
+    const templateRow: SavedEventTemplate = {
+      host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
+      name: templateDisplayName(eventName),
+      event_type: eventType,
+      time_label: time.trim() || template.duration,
+      location: location.trim() || template.location,
+      bring_note: bringNote.trim() || template.bringNote,
+      supplies: supplyItems.map((item) => ({ name: item.name.trim(), quantity: Math.max(1, item.quantity) })).filter((item) => item.name),
+      roles: roleItems.map((item) => ({ name: item.name.trim(), quantity: Math.max(1, item.quantity) })).filter((item) => item.name),
+    }
+
+    setEventSaveState('saving')
+    setEventSaveStatus('Saving event template...')
+
+    if (!supabase) {
+      setSavedTemplates((templates) => {
+        const filteredTemplates = templates.filter(
+          (item) => item.name.trim().toLowerCase() !== templateRow.name.trim().toLowerCase(),
+        )
+        return [{ ...templateRow, id: templateRow.name }, ...filteredTemplates]
+      })
+      setEventSaveState('saved')
+      setEventSaveStatus('Template saved locally')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('gatherkit_event_templates')
+      .upsert(templateRow, { onConflict: 'host_email,name' })
+      .select('id,host_email,name,event_type,time_label,location,bring_note,supplies,roles,created_at,updated_at')
+      .single()
+
+    if (isMissingTemplatesTable(error)) {
+      setEventSaveState('error')
+      setEventSaveStatus('Run the updated Supabase SQL to save event templates.')
+      return
+    }
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Template sync error: ${error.message}`)
+      return
+    }
+
+    const savedTemplate: SavedEventTemplate = {
+      ...(data as Omit<SavedEventTemplate, 'supplies' | 'roles'>),
+      supplies: normalizeSavedItems((data as { supplies?: unknown }).supplies),
+      roles: normalizeSavedItems((data as { roles?: unknown }).roles),
+    }
+    setSavedTemplates((templates) => [
+      savedTemplate,
+      ...templates.filter((item) => (item.id ?? item.name) !== (savedTemplate.id ?? savedTemplate.name)),
+    ])
+    setEventSaveState('saved')
+    setEventSaveStatus('Template saved for future events')
+  }
+
+  async function createEventFromTemplate(savedTemplate: SavedEventTemplate) {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to use saved templates.')
+      setAppMode('Events')
+      setActiveNavLabel('Events')
+      return
+    }
+
+    const slug = `event-${Date.now().toString(36)}`
+    const today = getTodayDateLabel()
+    const templateEventType = eventTemplates.some((item) => item.label === savedTemplate.event_type)
+      ? savedTemplate.event_type
+      : 'Custom'
+    const draft: EventRow = {
+      slug,
+      event_type: templateEventType,
+      name: templateDisplayName(savedTemplate.name),
+      date_label: today,
+      time_label: savedTemplate.time_label || eventTemplates[0].duration,
+      location: savedTemplate.location || eventTemplates[0].location,
+      rsvp_deadline: getAutoRsvpDeadlineLabel(today),
+      bring_note: savedTemplate.bring_note || eventTemplates[0].bringNote,
+      host_name: hostProfileName.trim() || getDefaultHostName(authUser?.email),
+      host_phone: hostProfilePhone.trim() || defaultEventDraft.host_phone,
+      host_email: authUser?.email ?? savedTemplate.host_email,
+      status: 'draft',
+    }
+    const nextSupplies = savedTemplate.supplies.map((item) => ({ name: item.name, quantity: item.quantity }))
+    const nextRoles = savedTemplate.roles.map((item) => ({ name: item.name, quantity: item.quantity }))
+
+    updateEventUrl(slug)
+    setSelectedEventSlug(slug)
+    setEventRows((rows) => [draft, ...rows])
+    applyEventRow(draft)
+    setSupplyItems(nextSupplies)
+    setRoleItems(nextRoles)
+    setRsvpRows([])
+    setCheckedRunTasks([])
+    setMessageLog([])
+    setEventLookupState('found')
+    setActiveStep('Details')
+    setActiveNavLabel('Events')
+    setAppMode('Organizer')
+    setEventSaveState('saving')
+    setEventSaveStatus('Creating event from template...')
+
+    if (!supabase) {
+      const nextRows = [draft, ...eventRows]
+      setEventRows(nextRows)
+      window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+      setEventSaveState('saved')
+      setEventSaveStatus('New event created from template locally')
+      return
+    }
+
+    const { data: host, error: hostError } = await supabase
+      .from('gatherkit_hosts')
+      .upsert(
+        {
+          user_id: authUser?.id,
+          display_name: draft.host_name,
+          email: draft.host_email,
+          phone: draft.host_phone,
+        },
+        { onConflict: 'email' },
+      )
+      .select('id')
+      .single()
+
+    if (hostError) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      return
+    }
+
+    let { error } = await supabase.from('gatherkit_events').insert({
+      host_id: host.id,
+      ...draft,
+    })
+
+    if (isMissingStatusColumn(error)) {
+      const fallbackResult = await supabase.from('gatherkit_events').insert({
+        host_id: host.id,
+        ...eventRowWithoutStatus(draft),
+      })
+      error = fallbackResult.error
+    }
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Template event sync error: ${error.message}`)
+      return
+    }
+
+    setEventSaveState('saved')
+    setEventStatus('draft')
+    await syncSupplyItemsForEvent(slug, nextSupplies)
+    await syncRoleItemsForEvent(slug, nextRoles)
+    setEventSaveStatus('New event created from template')
+  }
+
+  async function deleteSavedTemplate(savedTemplate: SavedEventTemplate) {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to delete templates.')
+      return
+    }
+
+    setEventSaveState('saving')
+    setEventSaveStatus('Deleting event template...')
+
+    if (!supabase) {
+      setSavedTemplates((templates) =>
+        templates.filter((item) => (item.id ?? item.name) !== (savedTemplate.id ?? savedTemplate.name)),
+      )
+      setEventSaveState('saved')
+      setEventSaveStatus('Template deleted locally')
+      return
+    }
+
+    const query = savedTemplate.id
+      ? supabase.from('gatherkit_event_templates').delete().eq('id', savedTemplate.id)
+      : supabase
+          .from('gatherkit_event_templates')
+          .delete()
+          .eq('host_email', savedTemplate.host_email)
+          .eq('name', savedTemplate.name)
+    const { error } = await query
+
+    if (isMissingTemplatesTable(error)) {
+      setEventSaveState('error')
+      setEventSaveStatus('Run the updated Supabase SQL to manage event templates.')
+      return
+    }
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Template delete error: ${error.message}`)
+      return
+    }
+
+    setSavedTemplates((templates) =>
+      templates.filter((item) => (item.id ?? item.name) !== (savedTemplate.id ?? savedTemplate.name)),
+    )
+    setEventSaveState('saved')
+    setEventSaveStatus('Template deleted')
   }
 
   async function updateEventStatus(row: EventRow, nextStatus: EventStatus) {
@@ -2987,6 +3296,56 @@ function App() {
               </button>
             </div>
 
+            <section className="template-library" aria-label="Saved event templates">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">Templates</span>
+                  <h3>Reusable event setups.</h3>
+                  <p>Start a new draft with saved supplies, roles, location, and timing. RSVPs stay fresh.</p>
+                </div>
+                <span className="template-count">{savedTemplates.length} saved</span>
+              </div>
+              {savedTemplates.length > 0 ? (
+                <div className="template-grid">
+                  {savedTemplates.map((savedTemplate) => (
+                    <article className="template-card" key={savedTemplate.id ?? savedTemplate.name}>
+                      <span className="event-card-type">{savedTemplate.event_type}</span>
+                      <strong>{savedTemplate.name}</strong>
+                      <span className="event-card-meta">
+                        <Clock3 size={15} />
+                        {savedTemplate.time_label}
+                      </span>
+                      <span className="event-card-meta">
+                        <MapPin size={15} />
+                        {savedTemplate.location}
+                      </span>
+                      <p>
+                        {savedTemplate.supplies.length} supplies / {savedTemplate.roles.length} roles
+                      </p>
+                      <div className="template-actions">
+                        <button className="event-card-action" onClick={() => createEventFromTemplate(savedTemplate)} type="button">
+                          Use Template
+                          <ChevronRight size={17} />
+                        </button>
+                        <button className="event-card-archive" onClick={() => deleteSavedTemplate(savedTemplate)} type="button">
+                          <Trash2 size={16} />
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-template-card">
+                  <FileText />
+                  <div>
+                    <h4>No saved templates yet.</h4>
+                    <p>Open an event, review the setup, then save it as a template for repeat gatherings.</p>
+                  </div>
+                </div>
+              )}
+            </section>
+
             {visibleEventRows.length > 0 ? (
               <div className="events-grid">
                 {visibleEventRows.map((row) => (
@@ -3446,6 +3805,14 @@ function App() {
                     >
                       <FileText size={17} />
                       {eventStatus === 'archived' ? 'Restore Event' : 'Archive Event'}
+                    </button>
+                  </article>
+                  <article>
+                    <h3>Saved Template</h3>
+                    <p>Reuse this setup for a future event without copying RSVPs, messages, or run sheet checks.</p>
+                    <button className="inline-card-action" onClick={saveCurrentAsTemplate} type="button">
+                      <FileText size={17} />
+                      Save as Template
                     </button>
                   </article>
                   <article>

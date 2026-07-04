@@ -335,6 +335,56 @@ on public.gatherkit_event_roles
 for delete
 using (public.gatherkit_is_event_host(event_slug));
 
+create table if not exists public.gatherkit_event_templates (
+  id uuid primary key default gen_random_uuid(),
+  host_email text not null,
+  name text not null,
+  event_type text not null,
+  time_label text not null,
+  location text not null,
+  bring_note text not null default '',
+  supplies jsonb not null default '[]'::jsonb,
+  roles jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (host_email, name)
+);
+
+drop trigger if exists gatherkit_event_templates_set_updated_at on public.gatherkit_event_templates;
+
+create trigger gatherkit_event_templates_set_updated_at
+before update on public.gatherkit_event_templates
+for each row
+execute function public.set_updated_at();
+
+alter table public.gatherkit_event_templates enable row level security;
+
+drop policy if exists "gatherkit_event_templates_owner_read" on public.gatherkit_event_templates;
+drop policy if exists "gatherkit_event_templates_owner_insert" on public.gatherkit_event_templates;
+drop policy if exists "gatherkit_event_templates_owner_update" on public.gatherkit_event_templates;
+drop policy if exists "gatherkit_event_templates_owner_delete" on public.gatherkit_event_templates;
+
+create policy "gatherkit_event_templates_owner_read"
+on public.gatherkit_event_templates
+for select
+using (auth.uid() is not null and host_email = (auth.jwt() ->> 'email'));
+
+create policy "gatherkit_event_templates_owner_insert"
+on public.gatherkit_event_templates
+for insert
+with check (auth.uid() is not null and host_email = (auth.jwt() ->> 'email'));
+
+create policy "gatherkit_event_templates_owner_update"
+on public.gatherkit_event_templates
+for update
+using (auth.uid() is not null and host_email = (auth.jwt() ->> 'email'))
+with check (auth.uid() is not null and host_email = (auth.jwt() ->> 'email'));
+
+create policy "gatherkit_event_templates_owner_delete"
+on public.gatherkit_event_templates
+for delete
+using (auth.uid() is not null and host_email = (auth.jwt() ->> 'email'));
+
 create table if not exists public.gatherkit_event_messages (
   id uuid primary key default gen_random_uuid(),
   event_slug text not null,
@@ -431,5 +481,15 @@ begin
       and tablename = 'gatherkit_event_roles'
   ) then
     alter publication supabase_realtime add table public.gatherkit_event_roles;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_event_templates'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_event_templates;
   end if;
 end $$;
