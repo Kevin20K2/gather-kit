@@ -46,7 +46,8 @@ type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Su
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type EventLookupState = 'loading' | 'found' | 'missing'
 type AuthMode = 'sign-in' | 'sign-up'
-type EventStatus = 'draft' | 'published'
+type EventStatus = 'draft' | 'published' | 'archived'
+type EventListView = 'active' | 'history'
 type AuthUser = {
   id: string
   email?: string
@@ -460,11 +461,15 @@ function App() {
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
+  const [eventListView, setEventListView] = useState<EventListView>('active')
 
   const template = useMemo(
     () => eventTemplates.find((item) => item.label === eventType) ?? eventTemplates[0],
     [eventType],
   )
+  const activeEventRows = eventRows.filter((row) => (row.status ?? 'draft') !== 'archived')
+  const archivedEventRows = eventRows.filter((row) => row.status === 'archived')
+  const visibleEventRows = eventListView === 'active' ? activeEventRows : archivedEventRows
 
   const completeTasks = template.tasks.slice(0, 3)
   const openTasks = template.tasks.slice(3)
@@ -546,9 +551,9 @@ function App() {
       : 'Neighbors can still RSVP from the public event link. Organizer tools require a host account.'
   const sidebarStatus = authUser
     ? {
-        title: eventRows.length === 1 ? '1 event ready' : `${eventRows.length} events ready`,
+        title: activeEventRows.length === 1 ? '1 active event' : `${activeEventRows.length} active events`,
         body:
-          eventRows.length > 0
+          activeEventRows.length > 0
             ? 'Open an event to manage invites, reminders, and day-of tasks.'
             : 'Create your first event draft from the Events dashboard.',
       }
@@ -1405,6 +1410,55 @@ function App() {
     setEventSaveStatus('Event duplicated as a new draft')
   }
 
+  async function updateEventStatus(row: EventRow, nextStatus: EventStatus) {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to update event status.')
+      return
+    }
+
+    const nextRow = { ...row, status: nextStatus }
+    setEventRows((rows) => mergeEventRows(rows, nextRow))
+    if (row.slug === selectedEventSlug) {
+      setEventStatus(nextStatus)
+    }
+    setEventSaveState('saving')
+    setEventSaveStatus(nextStatus === 'archived' ? 'Archiving event...' : 'Restoring event...')
+
+    if (!supabase) {
+      setEventRows((rows) => {
+        const nextRows = mergeEventRows(rows, nextRow)
+        window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+        return nextRows
+      })
+      setEventSaveState('saved')
+      setEventSaveStatus(nextStatus === 'archived' ? 'Event archived locally' : 'Event restored locally')
+      return
+    }
+
+    const { error } = await supabase
+      .from('gatherkit_events')
+      .update({ status: nextStatus })
+      .eq('slug', row.slug)
+
+    if (error) {
+      setEventRows((rows) => mergeEventRows(rows, row))
+      if (row.slug === selectedEventSlug) {
+        setEventStatus(row.status ?? 'draft')
+      }
+      setEventSaveState('error')
+      setEventSaveStatus(
+        isMissingStatusColumn(error)
+          ? 'Run the updated Supabase SQL before archiving events.'
+          : `Status sync error: ${error.message}`,
+      )
+      return
+    }
+
+    setEventSaveState('saved')
+    setEventSaveStatus(nextStatus === 'archived' ? 'Event moved to History' : 'Event restored to Active')
+    if (nextStatus === 'archived') setEventListView('history')
+  }
+
   function createEventFromCurrentLink() {
     createNewEvent(selectedEventSlug)
   }
@@ -2049,7 +2103,7 @@ function App() {
               <div>
                 <span className="eyebrow">Events</span>
                 <h2>Manage neighborhood gatherings.</h2>
-                <p>Switch between event plans, create a new draft, and keep each RSVP list and run sheet separate.</p>
+                <p>Switch between active plans, review history, and duplicate past gatherings into fresh drafts.</p>
               </div>
               <button className="primary-action" onClick={() => createNewEvent()} type="button">
                 New Event
@@ -2057,16 +2111,37 @@ function App() {
               </button>
             </div>
 
-            {eventRows.length > 0 ? (
+            <div className="event-list-toggle" aria-label="Event list view">
+              <button
+                className={eventListView === 'active' ? 'selected' : ''}
+                onClick={() => setEventListView('active')}
+                type="button"
+              >
+                Active
+                <span>{activeEventRows.length}</span>
+              </button>
+              <button
+                className={eventListView === 'history' ? 'selected' : ''}
+                onClick={() => setEventListView('history')}
+                type="button"
+              >
+                History
+                <span>{archivedEventRows.length}</span>
+              </button>
+            </div>
+
+            {visibleEventRows.length > 0 ? (
               <div className="events-grid">
-                {eventRows.map((row) => (
+                {visibleEventRows.map((row) => (
                   <article
                     className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
                     key={row.slug}
                   >
                     <span className="event-card-badges">
                       <span className="event-card-type">{row.event_type}</span>
-                      <span className={`event-status ${row.status ?? 'draft'}`}>{row.status === 'published' ? 'Published' : 'Draft'}</span>
+                      <span className={`event-status ${row.status ?? 'draft'}`}>
+                        {row.status === 'published' ? 'Published' : row.status === 'archived' ? 'Archived' : 'Draft'}
+                      </span>
                     </span>
                     <strong>{row.name}</strong>
                     <span className="event-card-meta">
@@ -2091,6 +2166,17 @@ function App() {
                         <Copy size={16} />
                         Duplicate
                       </button>
+                      {row.status === 'archived' ? (
+                        <button className="event-card-duplicate" onClick={() => updateEventStatus(row, 'draft')} type="button">
+                          <CheckCircle2 size={16} />
+                          Restore
+                        </button>
+                      ) : (
+                        <button className="event-card-archive" onClick={() => updateEventStatus(row, 'archived')} type="button">
+                          <FileText size={16} />
+                          Archive
+                        </button>
+                      )}
                     </span>
                   </article>
                 ))}
@@ -2099,13 +2185,19 @@ function App() {
               <div className="empty-events">
                 <CalendarDays />
                 <div>
-                  <h3>No host events yet.</h3>
-                  <p>Create your first event draft, then share its public RSVP link with neighbors.</p>
+                  <h3>{eventListView === 'active' ? 'No active events yet.' : 'No archived events yet.'}</h3>
+                  <p>
+                    {eventListView === 'active'
+                      ? 'Create your first event draft, then share its public RSVP link with neighbors.'
+                      : 'Archived events will appear here and can be duplicated for future gatherings.'}
+                  </p>
                 </div>
-                <button className="primary-action" onClick={() => createNewEvent()} type="button">
-                  New Event
-                  <PlusCircle size={19} />
-                </button>
+                {eventListView === 'active' && (
+                  <button className="primary-action" onClick={() => createNewEvent()} type="button">
+                    New Event
+                    <PlusCircle size={19} />
+                  </button>
+                )}
               </div>
             )}
           </section>
@@ -2377,6 +2469,18 @@ function App() {
                     <button className="inline-card-action" onClick={() => duplicateEvent()} type="button">
                       <Copy size={17} />
                       Duplicate Event
+                    </button>
+                  </article>
+                  <article>
+                    <h3>Event History</h3>
+                    <p>{eventStatus === 'archived' ? 'Restore this event to the active dashboard.' : 'Move this event to History when it is complete.'}</p>
+                    <button
+                      className={eventStatus === 'archived' ? 'inline-card-action' : 'inline-card-action danger'}
+                      onClick={() => updateEventStatus(buildEventDraft(), eventStatus === 'archived' ? 'draft' : 'archived')}
+                      type="button"
+                    >
+                      <FileText size={17} />
+                      {eventStatus === 'archived' ? 'Restore Event' : 'Archive Event'}
                     </button>
                   </article>
                   <article>

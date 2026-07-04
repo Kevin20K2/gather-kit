@@ -1117,6 +1117,49 @@
   gap: 16px;
 }
 
+.event-list-toggle {
+  border: 1px solid #d9e3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 4px;
+  gap: 4px;
+}
+
+.event-list-toggle button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #435d73;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.event-list-toggle button.selected {
+  background: #effbfb;
+  color: #078d96;
+}
+
+.event-list-toggle span {
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 999px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  font-size: 12px;
+}
+
 .empty-events {
   border: 1px solid #dfe7ef;
   border-radius: 8px;
@@ -1207,6 +1250,11 @@
   color: #087f5b;
 }
 
+.event-status.archived {
+  background: #eef3f7;
+  color: #526b80;
+}
+
 .event-card strong {
   font-size: 22px;
   line-height: 1.15;
@@ -1245,6 +1293,7 @@
 
 .event-card-action,
 .event-card-duplicate,
+.event-card-archive,
 .inline-card-action {
   min-height: 38px;
   border-radius: 8px;
@@ -1265,10 +1314,16 @@
 }
 
 .event-card-duplicate,
+.event-card-archive,
 .inline-card-action {
   border: 1px solid #d8e3ed;
   background: #ffffff;
   color: #20364f;
+}
+
+.event-card-archive,
+.inline-card-action.danger {
+  color: #8a4b00;
 }
 
 .inline-card-action {
