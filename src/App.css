@@ -1801,6 +1801,33 @@
   font-weight: 750;
 }
 
+.template-name-editor {
+  display: grid;
+  gap: 6px;
+  color: #071936;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.template-name-editor input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cddbe8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #071936;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 850;
+  outline: none;
+}
+
+.template-name-editor input:focus {
+  border-color: #079aa3;
+  box-shadow: 0 0 0 4px rgba(7, 154, 163, 0.12);
+}
+
 .template-actions {
   margin-top: 6px;
   display: flex;
@@ -3261,6 +3288,7 @@ select:focus-visible {
   .share-packet .secondary-action,
   .packet-card button,
   .template-actions .event-card-action,
+  .template-actions .event-card-duplicate,
   .template-actions .event-card-archive,
   .recurring-actions .inline-card-action {
     width: 100%;

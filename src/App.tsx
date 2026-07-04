@@ -557,6 +557,10 @@ function App() {
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
   const [templateSaveStatus, setTemplateSaveStatus] = useState('Ready to save as a template')
   const [templateSaveState, setTemplateSaveState] = useState<SaveState>('idle')
+  const [editingTemplateKey, setEditingTemplateKey] = useState('')
+  const [editingTemplateName, setEditingTemplateName] = useState('')
+  const [templateLibraryStatus, setTemplateLibraryStatus] = useState('')
+  const [templateLibraryState, setTemplateLibraryState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
   const [copiedLabel, setCopiedLabel] = useState('')
   const [neighborName, setNeighborName] = useState('')
@@ -2118,6 +2122,134 @@ function App() {
     setEventSaveStatus('Template deleted')
   }
 
+  function startEditingTemplate(savedTemplate: SavedEventTemplate) {
+    setEditingTemplateKey(savedTemplate.id ?? savedTemplate.name)
+    setEditingTemplateName(savedTemplate.name)
+    setTemplateLibraryStatus('')
+    setTemplateLibraryState('idle')
+  }
+
+  function stopEditingTemplate() {
+    setEditingTemplateKey('')
+    setEditingTemplateName('')
+  }
+
+  async function renameSavedTemplate(savedTemplate: SavedEventTemplate) {
+    const nextName = templateDisplayName(editingTemplateName)
+    const templateKey = savedTemplate.id ?? savedTemplate.name
+
+    if (nextName.trim().toLowerCase() === savedTemplate.name.trim().toLowerCase()) {
+      stopEditingTemplate()
+      return
+    }
+
+    setTemplateLibraryState('saving')
+    setTemplateLibraryStatus('Renaming template...')
+
+    if (!supabase) {
+      setSavedTemplates((templates) =>
+        templates.map((item) => ((item.id ?? item.name) === templateKey ? { ...item, name: nextName } : item)),
+      )
+      stopEditingTemplate()
+      setTemplateLibraryState('saved')
+      setTemplateLibraryStatus('Template renamed locally')
+      return
+    }
+
+    const query = savedTemplate.id
+      ? supabase.from('gatherkit_event_templates').update({ name: nextName }).eq('id', savedTemplate.id)
+      : supabase
+          .from('gatherkit_event_templates')
+          .update({ name: nextName })
+          .eq('host_email', savedTemplate.host_email)
+          .eq('name', savedTemplate.name)
+    const { data, error } = await query
+      .select('id,host_email,name,event_type,time_label,location,bring_note,supplies,roles,created_at,updated_at')
+      .single()
+
+    if (isMissingTemplatesTable(error)) {
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus('Run the updated Supabase SQL to edit templates.')
+      return
+    }
+
+    if (error) {
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus(error.code === '23505' ? 'A template with that name already exists.' : `Template rename error: ${error.message}`)
+      return
+    }
+
+    const renamedTemplate: SavedEventTemplate = {
+      ...(data as Omit<SavedEventTemplate, 'supplies' | 'roles'>),
+      supplies: normalizeSavedItems((data as { supplies?: unknown }).supplies),
+      roles: normalizeSavedItems((data as { roles?: unknown }).roles),
+    }
+    setSavedTemplates((templates) =>
+      templates.map((item) => ((item.id ?? item.name) === templateKey ? renamedTemplate : item)),
+    )
+    stopEditingTemplate()
+    setTemplateLibraryState('saved')
+    setTemplateLibraryStatus('Template renamed')
+  }
+
+  async function updateTemplateFromCurrentEvent(savedTemplate: SavedEventTemplate) {
+    const templateKey = savedTemplate.id ?? savedTemplate.name
+    const payload = {
+      event_type: eventType,
+      time_label: time.trim() || template.duration,
+      location: location.trim() || template.location,
+      bring_note: bringNote.trim() || template.bringNote,
+      supplies: supplyItems.map((item) => ({ name: item.name.trim(), quantity: Math.max(1, item.quantity) })).filter((item) => item.name),
+      roles: roleItems.map((item) => ({ name: item.name.trim(), quantity: Math.max(1, item.quantity) })).filter((item) => item.name),
+    }
+
+    setTemplateLibraryState('saving')
+    setTemplateLibraryStatus(`Updating ${savedTemplate.name} from the current event...`)
+
+    if (!supabase) {
+      setSavedTemplates((templates) =>
+        templates.map((item) => ((item.id ?? item.name) === templateKey ? { ...item, ...payload } : item)),
+      )
+      setTemplateLibraryState('saved')
+      setTemplateLibraryStatus('Template updated locally')
+      return
+    }
+
+    const query = savedTemplate.id
+      ? supabase.from('gatherkit_event_templates').update(payload).eq('id', savedTemplate.id)
+      : supabase
+          .from('gatherkit_event_templates')
+          .update(payload)
+          .eq('host_email', savedTemplate.host_email)
+          .eq('name', savedTemplate.name)
+    const { data, error } = await query
+      .select('id,host_email,name,event_type,time_label,location,bring_note,supplies,roles,created_at,updated_at')
+      .single()
+
+    if (isMissingTemplatesTable(error)) {
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus('Run the updated Supabase SQL to edit templates.')
+      return
+    }
+
+    if (error) {
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus(`Template update error: ${error.message}`)
+      return
+    }
+
+    const updatedTemplate: SavedEventTemplate = {
+      ...(data as Omit<SavedEventTemplate, 'supplies' | 'roles'>),
+      supplies: normalizeSavedItems((data as { supplies?: unknown }).supplies),
+      roles: normalizeSavedItems((data as { roles?: unknown }).roles),
+    }
+    setSavedTemplates((templates) =>
+      templates.map((item) => ((item.id ?? item.name) === templateKey ? updatedTemplate : item)),
+    )
+    setTemplateLibraryState('saved')
+    setTemplateLibraryStatus('Template updated from current event')
+  }
+
   async function updateEventStatus(row: EventRow, nextStatus: EventStatus) {
     if (isSupabaseConfigured && !authUser?.email) {
       setAuthStatus('Sign in as a host to update event status.')
@@ -3291,33 +3423,68 @@ function App() {
               </div>
               {savedTemplates.length > 0 ? (
                 <div className="template-grid">
-                  {savedTemplates.map((savedTemplate) => (
-                    <article className="template-card" key={savedTemplate.id ?? savedTemplate.name}>
-                      <span className="event-card-type">{savedTemplate.event_type}</span>
-                      <strong>{savedTemplate.name}</strong>
-                      <span className="event-card-meta">
-                        <Clock3 size={15} />
-                        {savedTemplate.time_label}
-                      </span>
-                      <span className="event-card-meta">
-                        <MapPin size={15} />
-                        {savedTemplate.location}
-                      </span>
-                      <p>
-                        {savedTemplate.supplies.length} supplies / {savedTemplate.roles.length} roles
-                      </p>
-                      <div className="template-actions">
-                        <button className="event-card-action" onClick={() => createEventFromTemplate(savedTemplate)} type="button">
-                          Use Template
-                          <ChevronRight size={17} />
-                        </button>
-                        <button className="event-card-archive" onClick={() => deleteSavedTemplate(savedTemplate)} type="button">
-                          <Trash2 size={16} />
-                          Delete
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                  {savedTemplates.map((savedTemplate) => {
+                    const templateKey = savedTemplate.id ?? savedTemplate.name
+                    const isEditingTemplate = editingTemplateKey === templateKey
+                    return (
+                      <article className="template-card" key={templateKey}>
+                        <span className="event-card-type">{savedTemplate.event_type}</span>
+                        {isEditingTemplate ? (
+                          <label className="template-name-editor">
+                            Template name
+                            <input
+                              autoFocus
+                              value={editingTemplateName}
+                              onChange={(event) => setEditingTemplateName(event.target.value)}
+                            />
+                          </label>
+                        ) : (
+                          <strong>{savedTemplate.name}</strong>
+                        )}
+                        <span className="event-card-meta">
+                          <Clock3 size={15} />
+                          {savedTemplate.time_label}
+                        </span>
+                        <span className="event-card-meta">
+                          <MapPin size={15} />
+                          {savedTemplate.location}
+                        </span>
+                        <p>
+                          {savedTemplate.supplies.length} supplies / {savedTemplate.roles.length} roles
+                        </p>
+                        {isEditingTemplate ? (
+                          <div className="template-actions">
+                            <button className="event-card-action" onClick={() => renameSavedTemplate(savedTemplate)} type="button">
+                              <Check size={16} />
+                              Save Name
+                            </button>
+                            <button className="event-card-archive" onClick={stopEditingTemplate} type="button">
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="template-actions">
+                            <button className="event-card-action" onClick={() => createEventFromTemplate(savedTemplate)} type="button">
+                              Use Template
+                              <ChevronRight size={17} />
+                            </button>
+                            <button className="event-card-duplicate" onClick={() => startEditingTemplate(savedTemplate)} type="button">
+                              <PenLine size={16} />
+                              Rename
+                            </button>
+                            <button className="event-card-duplicate" onClick={() => updateTemplateFromCurrentEvent(savedTemplate)} type="button">
+                              <Copy size={16} />
+                              Update Setup
+                            </button>
+                            <button className="event-card-archive" onClick={() => deleteSavedTemplate(savedTemplate)} type="button">
+                              <Trash2 size={16} />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="empty-template-card">
@@ -3327,6 +3494,9 @@ function App() {
                     <p>Open an event, review the setup, then save it as a template for repeat gatherings.</p>
                   </div>
                 </div>
+              )}
+              {templateLibraryStatus && (
+                <span className={`template-save-feedback ${templateLibraryState}`}>{templateLibraryStatus}</span>
               )}
             </section>
 
