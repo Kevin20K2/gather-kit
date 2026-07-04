@@ -1983,6 +1983,9 @@ function App() {
       return
     }
 
+    setTemplateLibraryStatus('')
+    setTemplateLibraryState('idle')
+
     const slug = `event-${Date.now().toString(36)}`
     const today = getTodayDateLabel()
     const templateEventType = eventTemplates.some((item) => item.label === savedTemplate.event_type)
@@ -2082,8 +2085,11 @@ function App() {
       return
     }
 
+    stopEditingTemplate()
     setEventSaveState('saving')
     setEventSaveStatus('Deleting event template...')
+    setTemplateLibraryState('saving')
+    setTemplateLibraryStatus(`Deleting ${savedTemplate.name}...`)
 
     if (!supabase) {
       setSavedTemplates((templates) =>
@@ -2091,6 +2097,8 @@ function App() {
       )
       setEventSaveState('saved')
       setEventSaveStatus('Template deleted locally')
+      setTemplateLibraryState('saved')
+      setTemplateLibraryStatus('Template deleted')
       return
     }
 
@@ -2106,12 +2114,16 @@ function App() {
     if (isMissingTemplatesTable(error)) {
       setEventSaveState('error')
       setEventSaveStatus('Run the updated Supabase SQL to manage event templates.')
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus('Run the updated Supabase SQL to manage event templates.')
       return
     }
 
     if (error) {
       setEventSaveState('error')
       setEventSaveStatus(`Template delete error: ${error.message}`)
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus(`Template delete error: ${error.message}`)
       return
     }
 
@@ -2120,6 +2132,8 @@ function App() {
     )
     setEventSaveState('saved')
     setEventSaveStatus('Template deleted')
+    setTemplateLibraryState('saved')
+    setTemplateLibraryStatus('Template deleted')
   }
 
   function startEditingTemplate(savedTemplate: SavedEventTemplate) {
