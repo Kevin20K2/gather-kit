@@ -574,6 +574,8 @@ function App() {
   const [messageAudience, setMessageAudience] = useState<MessageAudience>('Yes and maybe')
   const [messageBody, setMessageBody] = useState('')
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
+  const [runSheetSendLabel, setRunSheetSendLabel] = useState('')
+  const [runSheetSendState, setRunSheetSendState] = useState<SaveState>('idle')
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
   const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>('All')
@@ -1428,9 +1430,17 @@ function App() {
     const nextDateLabel = formatDateLabelFromInput(value)
     if (!nextDateLabel) return
 
+    const previousAutoRsvpDate = getAutoRsvpDeadlineLabel(date)
+    const shouldAutoUpdateRsvp =
+      !rsvpDeadlineTouched ||
+      rsvpDate === previousAutoRsvpDate ||
+      rsvpDate === date ||
+      rsvpDate === defaultEventDraft.rsvp_deadline
+
     setDate(nextDateLabel)
-    if (!rsvpDeadlineTouched) {
+    if (shouldAutoUpdateRsvp) {
       setRsvpDate(getAutoRsvpDeadlineLabel(nextDateLabel))
+      setRsvpDeadlineTouched(false)
     }
   }
 
@@ -2742,14 +2752,14 @@ function App() {
     if (isSupabaseConfigured && !authUser) {
       setCopiedLabel('Sign in as host to send updates')
       window.setTimeout(() => setCopiedLabel(''), 2600)
-      return
+      return false
     }
 
     if (isDifferentHostEvent) {
       setCopiedLabel('Create your own copy to send updates')
       setOwnershipWarning('send updates')
       window.setTimeout(() => setCopiedLabel(''), 2600)
-      return
+      return false
     }
 
     const nextMessage: MessageLogItem = {
@@ -2773,12 +2783,13 @@ function App() {
         setMessageLog((items) => items.filter((item) => item !== nextMessage))
         setCopiedLabel(`Message sync error: ${error.message}`)
         window.setTimeout(() => setCopiedLabel(''), 2600)
-        return
+        return false
       }
     }
 
     setCopiedLabel(`Message sent to ${count}`)
     window.setTimeout(() => setCopiedLabel(''), 1800)
+    return true
   }
 
   function sendMessage() {
@@ -2829,8 +2840,15 @@ function App() {
     }
   }
 
-  function sendRunSheetUpdate(body: string) {
-    persistMessage('Yes and maybe', body, attendingCount)
+  async function sendRunSheetUpdate(label: string, body: string) {
+    setRunSheetSendLabel(label)
+    setRunSheetSendState('saving')
+    const sent = await persistMessage('Yes and maybe', body, attendingCount)
+    setRunSheetSendState(sent ? 'saved' : 'error')
+    window.setTimeout(() => {
+      setRunSheetSendLabel('')
+      setRunSheetSendState('idle')
+    }, sent ? 1800 : 3000)
   }
 
   function switchMode(mode: AppMode) {
@@ -4673,20 +4691,49 @@ function App() {
               </article>
               <button
                 className="secondary-action"
-                onClick={() => sendRunSheetUpdate(`Setup for ${eventName} starts soon at ${location}. Please check in with ${hostName} when you arrive.`)}
+                disabled={runSheetSendState === 'saving'}
+                onClick={() =>
+                  sendRunSheetUpdate(
+                    'Setup Reminder',
+                    `Setup for ${eventName} starts soon at ${location}. Please check in with ${hostName} when you arrive.`,
+                  )
+                }
                 type="button"
               >
                 <Send size={18} />
-                Setup Reminder
+                {runSheetSendLabel === 'Setup Reminder' && runSheetSendState === 'saving'
+                  ? 'Sending...'
+                  : runSheetSendLabel === 'Setup Reminder' && runSheetSendState === 'saved'
+                    ? 'Setup Sent'
+                    : 'Setup Reminder'}
               </button>
               <button
                 className="primary-action"
-                onClick={() => sendRunSheetUpdate(`Thanks for joining ${eventName}. Please help reset ${location} before you leave.`)}
+                disabled={runSheetSendState === 'saving'}
+                onClick={() =>
+                  sendRunSheetUpdate(
+                    'Cleanup Update',
+                    `Thanks for joining ${eventName}. Please help reset ${location} before you leave.`,
+                  )
+                }
                 type="button"
               >
-                Cleanup Update
+                {runSheetSendLabel === 'Cleanup Update' && runSheetSendState === 'saving'
+                  ? 'Sending...'
+                  : runSheetSendLabel === 'Cleanup Update' && runSheetSendState === 'saved'
+                    ? 'Cleanup Sent'
+                    : 'Cleanup Update'}
                 <Send size={18} />
               </button>
+              {runSheetSendLabel && (
+                <span className={`run-send-feedback ${runSheetSendState}`}>
+                  {runSheetSendState === 'saving'
+                    ? `${runSheetSendLabel} is sending...`
+                    : runSheetSendState === 'saved'
+                      ? `${runSheetSendLabel} added to sent updates.`
+                      : `${runSheetSendLabel} could not be sent.`}
+                </span>
+              )}
             </div>
 
             <div className="run-grid">

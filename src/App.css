@@ -2552,6 +2552,30 @@
   color: #526b80;
 }
 
+.run-alerts button:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.run-send-feedback {
+  grid-column: 1 / -1;
+  color: #435d73;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.run-send-feedback.saving {
+  color: #078d96;
+}
+
+.run-send-feedback.saved {
+  color: #087f5b;
+}
+
+.run-send-feedback.error {
+  color: #9b3d12;
+}
+
 .run-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
