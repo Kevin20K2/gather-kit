@@ -555,6 +555,8 @@ function App() {
   const [eventStatus, setEventStatus] = useState<EventStatus>(defaultEventDraft.status ?? 'draft')
   const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
+  const [templateSaveStatus, setTemplateSaveStatus] = useState('Ready to save as a template')
+  const [templateSaveState, setTemplateSaveState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
   const [copiedLabel, setCopiedLabel] = useState('')
   const [neighborName, setNeighborName] = useState('')
@@ -1895,6 +1897,8 @@ function App() {
   async function saveCurrentAsTemplate() {
     if (isSupabaseConfigured && !authUser?.email) {
       setAuthStatus('Sign in as a host to save event templates.')
+      setTemplateSaveState('error')
+      setTemplateSaveStatus('Sign in as a host to save templates.')
       setAppMode('Events')
       setActiveNavLabel('Events')
       return
@@ -1913,6 +1917,8 @@ function App() {
 
     setEventSaveState('saving')
     setEventSaveStatus('Saving event template...')
+    setTemplateSaveState('saving')
+    setTemplateSaveStatus('Saving template...')
 
     if (!supabase) {
       setSavedTemplates((templates) => {
@@ -1923,6 +1929,8 @@ function App() {
       })
       setEventSaveState('saved')
       setEventSaveStatus('Template saved locally')
+      setTemplateSaveState('saved')
+      setTemplateSaveStatus('Template saved locally')
       return
     }
 
@@ -1935,12 +1943,16 @@ function App() {
     if (isMissingTemplatesTable(error)) {
       setEventSaveState('error')
       setEventSaveStatus('Run the updated Supabase SQL to save event templates.')
+      setTemplateSaveState('error')
+      setTemplateSaveStatus('Run the updated Supabase SQL to save templates.')
       return
     }
 
     if (error) {
       setEventSaveState('error')
       setEventSaveStatus(`Template sync error: ${error.message}`)
+      setTemplateSaveState('error')
+      setTemplateSaveStatus(`Template sync error: ${error.message}`)
       return
     }
 
@@ -1955,6 +1967,8 @@ function App() {
     ])
     setEventSaveState('saved')
     setEventSaveStatus('Template saved for future events')
+    setTemplateSaveState('saved')
+    setTemplateSaveStatus('Template saved for future events')
   }
 
   async function createEventFromTemplate(savedTemplate: SavedEventTemplate) {
@@ -3780,10 +3794,22 @@ function App() {
                   <article>
                     <h3>Saved Template</h3>
                     <p>Reuse this setup for a future event without copying RSVPs, messages, or run sheet checks.</p>
-                    <button className="inline-card-action" onClick={saveCurrentAsTemplate} type="button">
-                      <FileText size={17} />
-                      Save as Template
+                    <button
+                      className={templateSaveState === 'saved' ? 'inline-card-action success' : 'inline-card-action'}
+                      disabled={templateSaveState === 'saving'}
+                      onClick={saveCurrentAsTemplate}
+                      type="button"
+                    >
+                      {templateSaveState === 'saved' ? <CheckCircle2 size={17} /> : <FileText size={17} />}
+                      {templateSaveState === 'saving'
+                        ? 'Saving...'
+                        : templateSaveState === 'saved'
+                          ? 'Template Saved'
+                          : 'Save as Template'}
                     </button>
+                    <span className={`template-save-feedback ${templateSaveState}`}>
+                      {templateSaveStatus}
+                    </span>
                   </article>
                   <article>
                     <h3>Roles Open</h3>

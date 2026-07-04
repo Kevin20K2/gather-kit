@@ -1999,8 +1999,39 @@
   color: #8a4b00;
 }
 
+.inline-card-action.success {
+  border-color: #a7e2c5;
+  background: #ecfbf2;
+  color: #087f5b;
+}
+
+.inline-card-action:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
 .inline-card-action {
   margin-top: 14px;
+}
+
+.template-save-feedback {
+  display: block;
+  margin-top: 10px;
+  color: #435d73;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.template-save-feedback.saving {
+  color: #078d96;
+}
+
+.template-save-feedback.saved {
+  color: #087f5b;
+}
+
+.template-save-feedback.error {
+  color: #9b3d12;
 }
 
 .recurring-actions {
