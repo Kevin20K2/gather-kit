@@ -1578,6 +1578,17 @@ function App() {
     setAppMode(nextMode)
   }
 
+  function openCurrentRsvpList() {
+    const selectedRow = eventRows.find((row) => row.slug === selectedEventSlug) ?? activeEventRows[0]
+    if (selectedRow) {
+      selectEvent(selectedRow)
+    } else {
+      setAppMode('Organizer')
+      setActiveNavLabel('Events')
+    }
+    setActiveStep('Review')
+  }
+
   async function copyText(label: string, text: string) {
     try {
       await navigator.clipboard.writeText(text)
@@ -2370,8 +2381,8 @@ function App() {
                   ))}
                   {rsvpRows.length === 0 && <p className="empty-note">No RSVPs yet.</p>}
                 </div>
-                <button className="secondary-action" onClick={() => switchMode('Neighbor RSVP')} type="button">
-                  View RSVP Page
+                <button className="secondary-action" onClick={openCurrentRsvpList} type="button">
+                  View All RSVPs
                   <ChevronRight size={19} />
                 </button>
               </section>
