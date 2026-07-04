@@ -86,6 +86,12 @@ type RunTaskRow = {
   completed: boolean
 }
 
+type SupplyItem = {
+  id?: string
+  name: string
+  quantity: number
+}
+
 type EventRow = {
   slug: string
   event_type: EventType
@@ -218,6 +224,10 @@ const initialRsvpRows: RsvpRow[] = [
   { name: 'Priya Shah', status: 'Maybe', note: 'will confirm tomorrow', supply: '', role: '' },
   { name: 'Sam Rivera', status: 'Yes', note: 'bringing chips', supply: 'Appetizers', role: '' },
 ]
+
+function createSupplyItems(supplies: string[]): SupplyItem[] {
+  return supplies.map((name) => ({ name, quantity: 1 }))
+}
 
 const defaultEventSlug = 'neighborhood-event'
 const defaultEventDraft: EventRow = {
@@ -413,6 +423,15 @@ function isMissingStatusColumn(error: { message?: string } | null) {
   return Boolean(error?.message?.toLowerCase().includes('status'))
 }
 
+function isMissingSuppliesTable(error: { message?: string; code?: string } | null) {
+  return Boolean(
+    error &&
+      (error.code === '42P01' ||
+        error.message?.toLowerCase().includes('gatherkit_event_supplies') ||
+        error.message?.toLowerCase().includes('could not find the table')),
+  )
+}
+
 function eventRowWithoutStatus(row: EventRow) {
   return {
     slug: row.slug,
@@ -490,6 +509,8 @@ function App() {
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
   const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>('All')
   const [rsvpSearch, setRsvpSearch] = useState('')
+  const [supplyItems, setSupplyItems] = useState<SupplyItem[]>(() => createSupplyItems(eventTemplates[0].supplies))
+  const [newSupplyName, setNewSupplyName] = useState('')
   const [eventListView, setEventListView] = useState<EventListView>('active')
 
   const template = useMemo(
@@ -513,9 +534,23 @@ function App() {
   const yesCount = rsvpRows.filter((row) => row.status === 'Yes').length
   const maybeCount = rsvpRows.filter((row) => row.status === 'Maybe').length
   const attendingCount = yesCount + maybeCount
-  const claimedSupplies = new Set(rsvpRows.filter((row) => row.status !== 'No').map((row) => row.supply).filter(Boolean))
-  const supplySignupDraft = `Supply signup for ${eventName}\n${template.supplies
-    .map((supply) => `- ${supply}: ${claimedSupplies.has(supply) ? 'claimed' : 'open'}`)
+  const supplyNames = supplyItems.map((item) => item.name).filter(Boolean)
+  const claimedSupplyCounts = supplyItems.reduce<Record<string, number>>((counts, item) => {
+    counts[item.name] = rsvpRows.filter((row) => row.status !== 'No' && row.supply === item.name).length
+    return counts
+  }, {})
+  const claimedSupplies = new Set(
+    supplyItems
+      .filter((item) => (claimedSupplyCounts[item.name] ?? 0) >= item.quantity)
+      .map((item) => item.name),
+  )
+  const openSupplyItems = supplyItems.filter((item) => (claimedSupplyCounts[item.name] ?? 0) < item.quantity)
+  const supplySignupDraft = `Supply signup for ${eventName}\n${supplyItems
+    .map((item) => {
+      const claimedCount = claimedSupplyCounts[item.name] ?? 0
+      const openCount = Math.max(0, item.quantity - claimedCount)
+      return `- ${item.name}: ${claimedCount}/${item.quantity} claimed${openCount > 0 ? `, ${openCount} open` : ''}`
+    })
     .join('\n')}\nRSVP and choose an item: ${rsvpLink}`
   const roleSignupDraft = `Volunteer roles for ${eventName}\n${template.roles
     .map((role) => `- ${role}`)
@@ -528,9 +563,14 @@ function App() {
     supplySignupDraft,
     roleSignupDraft,
   ].join('\n\n')
-  const stillNeededSupplies = template.supplies.filter(
-    (supply) => !claimedSupplies.has(supply) && supply !== pledgedSupply,
-  )
+  const stillNeededSupplies = openSupplyItems.map((item) => item.name).filter((supply) => supply !== pledgedSupply)
+  const stillNeededSupplyMessage = `Still needed for ${eventName}: ${
+    openSupplyItems.length > 0
+      ? openSupplyItems
+          .map((item) => `${item.name} (${Math.max(0, item.quantity - (claimedSupplyCounts[item.name] ?? 0))} open)`)
+          .join(', ')
+      : 'all supplies are covered'
+  }. RSVP here: ${rsvpLink}`
   const noResponseCount = Math.max(0, 18 - rsvpRows.length)
   const audienceCounts: Record<MessageAudience, number> = {
     'Everyone invited': rsvpRows.length + noResponseCount,
@@ -759,6 +799,12 @@ function App() {
   }, [localDataReady, messageLog, selectedEventSlug])
 
   useEffect(() => {
+    if (!isSupabaseConfigured && localDataReady) {
+      window.localStorage.setItem(localStorageKey('supplies'), JSON.stringify(supplyItems))
+    }
+  }, [localDataReady, selectedEventSlug, supplyItems])
+
+  useEffect(() => {
     if (supabase) return
 
     try {
@@ -801,6 +847,7 @@ function App() {
     setRsvpRows(readLocalList<RsvpRow>(localStorageKey('rsvps'), selectedEventSlug === defaultEventSlug ? initialRsvpRows : []))
     setCheckedRunTasks(readLocalList<string>(localStorageKey('run-tasks'), []))
     setMessageLog(readLocalList<MessageLogItem>(localStorageKey('message-log'), []))
+    setSupplyItems(readLocalList<SupplyItem>(localStorageKey('supplies'), createSupplyItems(template.supplies)))
   }, [eventRows, localDataReady, selectedEventSlug])
 
   useEffect(() => {
@@ -1008,6 +1055,55 @@ function App() {
     let isMounted = true
     const client = supabase
 
+    async function loadSupplies() {
+      const { data, error } = await client
+        .from('gatherkit_event_supplies')
+        .select('id,name,quantity')
+        .eq('event_slug', selectedEventSlug)
+        .order('created_at', { ascending: true })
+
+      if (!isMounted) return
+
+      if (isMissingSuppliesTable(error)) {
+        setSupplyItems(createSupplyItems(template.supplies))
+        return
+      }
+
+      if (error) {
+        setEventSaveStatus(`Could not load supplies: ${error.message}`)
+        setEventSaveState('error')
+        setSupplyItems(createSupplyItems(template.supplies))
+        return
+      }
+
+      setSupplyItems(data.length > 0 ? (data as SupplyItem[]) : createSupplyItems(template.supplies))
+    }
+
+    loadSupplies()
+
+    const channel = client
+      .channel(`event-supplies-${selectedEventSlug}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_event_supplies', filter: `event_slug=eq.${selectedEventSlug}` },
+        () => {
+          loadSupplies()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [selectedEventSlug, eventType])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
     async function loadMessages() {
       const { data, error } = await client
         .from('gatherkit_event_messages')
@@ -1110,6 +1206,7 @@ function App() {
     setLocation(nextTemplate.location)
     setBringNote(nextTemplate.bringNote)
     setSelectedRoles(nextTemplate.roles.slice(0, 2))
+    setSupplyItems(createSupplyItems(nextTemplate.supplies))
     setPledgedSupply(nextTemplate.supplies[0])
     setPledgedRole('')
   }
@@ -1276,6 +1373,33 @@ function App() {
     return true
   }
 
+  async function syncSupplyItemsForEvent(slug: string, items: SupplyItem[]) {
+    if (!supabase) return
+
+    const rows = items
+      .filter((item) => item.name.trim())
+      .map((item) => ({
+        event_slug: slug,
+        name: item.name.trim(),
+        quantity: Math.max(1, item.quantity),
+      }))
+
+    if (rows.length === 0) return
+
+    const { error } = await supabase.from('gatherkit_event_supplies').upsert(rows, { onConflict: 'event_slug,name' })
+
+    if (isMissingSuppliesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync supply lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Supply sync error: ${error.message}`)
+      setEventSaveState('error')
+    }
+  }
+
   async function createNewEvent(slugOverride?: string) {
     if (isSupabaseConfigured && !authUser) {
       setAuthStatus('Sign in as a host to create events.')
@@ -1286,12 +1410,14 @@ function App() {
 
     const slug = slugOverride ?? `event-${Date.now().toString(36)}`
     const draft = buildStarterEvent(slug)
+    const starterSupplies = createSupplyItems(eventTemplates[0].supplies)
 
     updateEventUrl(slug)
     setSelectedEventSlug(slug)
     setEventRows((rows) => [draft, ...rows])
     setEventLookupState('found')
     applyEventRow(draft)
+    setSupplyItems(starterSupplies)
     setRsvpDeadlineTouched(false)
     setRsvpRows([])
     setCheckedRunTasks([])
@@ -1354,6 +1480,7 @@ function App() {
     setEventSaveState('saved')
     setEventStatus(draft.status ?? 'draft')
     setEventLookupState('found')
+    await syncSupplyItemsForEvent(slug, starterSupplies)
     setEventSaveStatus('New event draft created')
   }
 
@@ -1460,6 +1587,7 @@ function App() {
       .replace(/[^a-z0-9-]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'event'
     const slug = `${safeBaseSlug}-next-${Date.now().toString(36)}`
+    const duplicatedSupplies = supplyItems.map((item) => ({ name: item.name, quantity: item.quantity }))
     const draft: EventRow = {
       ...sourceEvent,
       slug,
@@ -1474,6 +1602,7 @@ function App() {
     setSelectedEventSlug(slug)
     setEventRows((rows) => [draft, ...rows])
     applyEventRow(draft)
+    setSupplyItems(duplicatedSupplies)
     setRsvpRows([])
     setCheckedRunTasks([])
     setMessageLog([])
@@ -1534,6 +1663,7 @@ function App() {
 
     setEventSaveState('saved')
     setEventStatus('draft')
+    await syncSupplyItemsForEvent(slug, duplicatedSupplies)
     setEventSaveStatus(`Event duplicated ${interval === 'monthly' ? 'one month' : 'one week'} later as a new draft`)
   }
 
@@ -1737,6 +1867,101 @@ function App() {
       setSubmittedMessage(`Could not remove RSVP: ${error.message}`)
       window.setTimeout(() => setSubmittedMessage(''), 3000)
     }
+  }
+
+  async function addSupplyItem() {
+    const trimmedName = newSupplyName.trim()
+    if (!trimmedName) return
+
+    const nextItem: SupplyItem = { name: trimmedName, quantity: 1 }
+    setSupplyItems((items) => [...items, nextItem])
+    setNewSupplyName('')
+
+    if (!supabase) return
+
+    const { error } = await supabase.from('gatherkit_event_supplies').insert({
+      event_slug: selectedEventSlug,
+      name: nextItem.name,
+      quantity: nextItem.quantity,
+    })
+
+    if (isMissingSuppliesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync supply lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Supply sync error: ${error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Supply item added')
+    setEventSaveState('saved')
+  }
+
+  async function updateSupplyItem(originalItem: SupplyItem, updates: Partial<SupplyItem>) {
+    const nextItem = {
+      ...originalItem,
+      ...updates,
+      quantity: Math.max(1, Number(updates.quantity ?? originalItem.quantity) || 1),
+    }
+
+    setSupplyItems((items) => items.map((item) => (item === originalItem || item.id === originalItem.id ? nextItem : item)))
+
+    if (!supabase) return
+
+    const payload = {
+      event_slug: selectedEventSlug,
+      name: nextItem.name.trim() || originalItem.name,
+      quantity: nextItem.quantity,
+    }
+    const result = nextItem.id
+      ? await supabase.from('gatherkit_event_supplies').update(payload).eq('id', nextItem.id)
+      : await supabase.from('gatherkit_event_supplies').upsert(payload, { onConflict: 'event_slug,name' })
+
+    if (isMissingSuppliesTable(result.error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync supply lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (result.error) {
+      setEventSaveStatus(`Supply sync error: ${result.error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Supply list updated')
+    setEventSaveState('saved')
+  }
+
+  async function removeSupplyItem(itemToRemove: SupplyItem) {
+    setSupplyItems((items) =>
+      items.filter((item) => (itemToRemove.id ? item.id !== itemToRemove.id : item.name !== itemToRemove.name)),
+    )
+    setRsvpRows((rows) => rows.map((row) => (row.supply === itemToRemove.name ? { ...row, supply: '' } : row)))
+
+    if (!supabase) return
+
+    const query = supabase.from('gatherkit_event_supplies').delete().eq('event_slug', selectedEventSlug)
+    const { error } = itemToRemove.id ? await query.eq('id', itemToRemove.id) : await query.eq('name', itemToRemove.name)
+
+    if (isMissingSuppliesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync supply lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Supply sync error: ${error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Supply item removed')
+    setEventSaveState('saved')
   }
 
   async function persistMessage(audience: MessageAudience, body: string, count: number) {
@@ -2967,6 +3192,65 @@ function App() {
                     </p>
                   </article>
                 </section>
+                <section className="supply-manager">
+                  <div className="section-heading">
+                    <div>
+                      <h3>Supply Manager</h3>
+                      <span>{openSupplyItems.length} items still need help</span>
+                    </div>
+                    <button className="secondary-action" onClick={() => copyText('Still Needed Supplies', stillNeededSupplyMessage)} type="button">
+                      <Copy size={18} />
+                      {copiedLabel === 'Still Needed Supplies' ? 'Copied' : 'Copy Still Needed'}
+                    </button>
+                  </div>
+
+                  <div className="add-supply-row">
+                    <label className="rsvp-search">
+                      <Gift size={18} />
+                      <input
+                        aria-label="New supply item"
+                        placeholder="Add supply item"
+                        value={newSupplyName}
+                        onChange={(event) => setNewSupplyName(event.target.value)}
+                      />
+                    </label>
+                    <button className="primary-action" onClick={addSupplyItem} type="button">
+                      Add Item
+                      <PlusCircle size={19} />
+                    </button>
+                  </div>
+
+                  <div className="supply-management-list">
+                    {supplyItems.map((item) => {
+                      const claimedCount = claimedSupplyCounts[item.name] ?? 0
+                      const openCount = Math.max(0, item.quantity - claimedCount)
+                      return (
+                        <article className="supply-management-row" key={item.id ?? item.name}>
+                          <label>
+                            Item
+                            <input value={item.name} onChange={(event) => updateSupplyItem(item, { name: event.target.value })} />
+                          </label>
+                          <label>
+                            Needed
+                            <input
+                              min="1"
+                              type="number"
+                              value={item.quantity}
+                              onChange={(event) => updateSupplyItem(item, { quantity: Number(event.target.value) })}
+                            />
+                          </label>
+                          <div className={openCount > 0 ? 'supply-count open' : 'supply-count covered'}>
+                            <strong>{claimedCount}/{item.quantity}</strong>
+                            <span>{openCount > 0 ? `${openCount} open` : 'covered'}</span>
+                          </div>
+                          <button className="rsvp-remove" onClick={() => removeSupplyItem(item)} type="button" aria-label={`Remove ${item.name}`}>
+                            <Trash2 size={17} />
+                          </button>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
                 <section className="rsvp-manager">
                   <div className="section-heading">
                     <div>
@@ -3029,7 +3313,7 @@ function App() {
                             onChange={(event) => updateHostRsvp(row, { supply: event.target.value })}
                           >
                             <option value="">Open</option>
-                            {template.supplies.map((supply) => (
+                            {supplyNames.map((supply) => (
                               <option key={supply}>{supply}</option>
                             ))}
                           </select>
@@ -3173,10 +3457,10 @@ function App() {
             <section className="side-card supplies-card">
               <h3>Supply Signup</h3>
               <div className="supply-list">
-                {template.supplies.map((supply) => (
-                  <div className="supply-row" key={supply}>
-                    <span>{supply}</span>
-                    <strong>{claimedSupplies.has(supply) ? 'claimed' : 'open'}</strong>
+                {supplyItems.map((item) => (
+                  <div className="supply-row" key={item.id ?? item.name}>
+                    <span>{item.name}</span>
+                    <strong>{claimedSupplyCounts[item.name] ?? 0}/{item.quantity}</strong>
                   </div>
                 ))}
               </div>
@@ -3385,10 +3669,10 @@ function App() {
                 </section>
                 <section>
                   <h3>Supply Check</h3>
-                  {template.supplies.map((supply) => (
-                    <div className="assignment-row" key={supply}>
-                      <span>{supply}</span>
-                      <strong>{claimedSupplies.has(supply) ? 'Covered' : 'Open'}</strong>
+                  {supplyItems.map((item) => (
+                    <div className="assignment-row" key={item.id ?? item.name}>
+                      <span>{item.name}</span>
+                      <strong>{(claimedSupplyCounts[item.name] ?? 0) >= item.quantity ? 'Covered' : 'Open'}</strong>
                     </div>
                   ))}
                 </section>
@@ -3455,7 +3739,7 @@ function App() {
                     <Gift size={22} />
                     <select value={pledgedSupply} onChange={(event) => setPledgedSupply(event.target.value)}>
                       <option value="">Choose an item</option>
-                      {template.supplies.map((supply) => (
+                      {supplyNames.map((supply) => (
                         <option key={supply}>{supply}</option>
                       ))}
                     </select>
