@@ -306,6 +306,20 @@ function getAutoRsvpDeadlineLabel(eventDateLabel: string) {
   }).format(deadline)
 }
 
+function getNextOccurrenceDateLabel(eventDateLabel: string) {
+  const eventDateInput = dateLabelToDateInput(eventDateLabel)
+  const eventDate = dateInputToLocalDate(eventDateInput)
+  if (!eventDate) return eventDateLabel
+
+  eventDate.setDate(eventDate.getDate() + 7)
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(eventDate)
+}
+
 function timeLabelToTimeInput(label: string) {
   const match = label.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
   if (!match) return ''
@@ -1299,6 +1313,98 @@ function App() {
     setEventSaveStatus('Copied to your account')
   }
 
+  async function duplicateEvent(sourceEvent: EventRow = buildEventDraft()) {
+    if (isSupabaseConfigured && !authUser?.email) {
+      setAuthStatus('Sign in as a host to duplicate events.')
+      setAppMode('Events')
+      setActiveNavLabel('Events')
+      return
+    }
+
+    const nextDateLabel = getNextOccurrenceDateLabel(sourceEvent.date_label)
+    const nextRsvpDeadline = getAutoRsvpDeadlineLabel(nextDateLabel) || sourceEvent.rsvp_deadline
+    const safeBaseSlug = sourceEvent.slug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'event'
+    const slug = `${safeBaseSlug}-next-${Date.now().toString(36)}`
+    const draft: EventRow = {
+      ...sourceEvent,
+      slug,
+      name: `${sourceEvent.name} Copy`,
+      date_label: nextDateLabel,
+      rsvp_deadline: nextRsvpDeadline,
+      host_email: authUser?.email ?? sourceEvent.host_email,
+      status: 'draft',
+    }
+
+    updateEventUrl(slug)
+    setSelectedEventSlug(slug)
+    setEventRows((rows) => [draft, ...rows])
+    applyEventRow(draft)
+    setRsvpRows([])
+    setCheckedRunTasks([])
+    setMessageLog([])
+    setEventLookupState('found')
+    setActiveStep('Details')
+    setActiveNavLabel('Dashboard')
+    setAppMode('Organizer')
+    setEventSaveState('saving')
+    setEventSaveStatus('Duplicating event...')
+
+    if (!supabase) {
+      const nextRows = [draft, ...eventRows]
+      setEventRows(nextRows)
+      window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
+      setEventSaveState('saved')
+      setEventSaveStatus('Event duplicated locally')
+      return
+    }
+
+    const { data: host, error: hostError } = await supabase
+      .from('gatherkit_hosts')
+      .upsert(
+        {
+          user_id: authUser?.id,
+          display_name: draft.host_name,
+          email: draft.host_email,
+          phone: draft.host_phone,
+        },
+        { onConflict: 'email' },
+      )
+      .select('id')
+      .single()
+
+    if (hostError) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Host sync error: ${hostError.message}`)
+      return
+    }
+
+    let { error } = await supabase.from('gatherkit_events').insert({
+      host_id: host.id,
+      ...draft,
+    })
+
+    if (isMissingStatusColumn(error)) {
+      const fallbackResult = await supabase.from('gatherkit_events').insert({
+        host_id: host.id,
+        ...eventRowWithoutStatus(draft),
+      })
+      error = fallbackResult.error
+    }
+
+    if (error) {
+      setEventSaveState('error')
+      setEventSaveStatus(`Duplicate sync error: ${error.message}`)
+      return
+    }
+
+    setEventSaveState('saved')
+    setEventStatus('draft')
+    setEventSaveStatus('Event duplicated as a new draft')
+  }
+
   function createEventFromCurrentLink() {
     createNewEvent(selectedEventSlug)
   }
@@ -1660,6 +1766,7 @@ function App() {
       host_name: hostName.trim() || defaultEventDraft.host_name,
       host_phone: hostPhone.trim() || defaultEventDraft.host_phone,
       host_email: authUser?.email ?? (hostEmail.trim() || defaultEventDraft.host_email),
+      status: 'draft',
     }
   }
 
@@ -1953,11 +2060,9 @@ function App() {
             {eventRows.length > 0 ? (
               <div className="events-grid">
                 {eventRows.map((row) => (
-                  <button
+                  <article
                     className={row.slug === selectedEventSlug ? 'event-card selected' : 'event-card'}
                     key={row.slug}
-                    onClick={() => selectEvent(row)}
-                    type="button"
                   >
                     <span className="event-card-badges">
                       <span className="event-card-type">{row.event_type}</span>
@@ -1977,11 +2082,17 @@ function App() {
                       {row.location}
                     </span>
                     <span className="event-card-host">Host: {row.host_name}</span>
-                    <span className="event-card-action">
-                      Open planner
-                      <ChevronRight size={17} />
+                    <span className="event-card-actions">
+                      <button className="event-card-action" onClick={() => selectEvent(row)} type="button">
+                        Open planner
+                        <ChevronRight size={17} />
+                      </button>
+                      <button className="event-card-duplicate" onClick={() => duplicateEvent(row)} type="button">
+                        <Copy size={16} />
+                        Duplicate
+                      </button>
                     </span>
-                  </button>
+                  </article>
                 ))}
               </div>
             ) : (
@@ -2259,6 +2370,14 @@ function App() {
                   <article>
                     <h3>Organizer Packet</h3>
                     <p>Invite copy, text reminder, flyer copy, RSVP link, and supply signup.</p>
+                  </article>
+                  <article>
+                    <h3>Recurring Event</h3>
+                    <p>Create next week's draft with the same setup and a fresh RSVP list.</p>
+                    <button className="inline-card-action" onClick={() => duplicateEvent()} type="button">
+                      <Copy size={17} />
+                      Duplicate Event
+                    </button>
                   </article>
                   <article>
                     <h3>Roles Open</h3>
