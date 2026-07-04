@@ -2329,7 +2329,7 @@ function App() {
         return nextRows
       })
       setEventSaveState('saved')
-      setEventSaveStatus(nextStatus === 'archived' ? 'Event archived locally' : 'Event restored locally')
+      setEventSaveStatus(nextStatus === 'archived' ? 'Event moved to History locally' : 'Event restored locally')
       return
     }
 
@@ -2354,7 +2354,6 @@ function App() {
 
     setEventSaveState('saved')
     setEventSaveStatus(nextStatus === 'archived' ? 'Event moved to History' : 'Event restored to Active')
-    if (nextStatus === 'archived') setEventListView('history')
   }
 
   function createEventFromCurrentLink() {
