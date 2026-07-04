@@ -48,6 +48,7 @@ type EventLookupState = 'loading' | 'found' | 'missing'
 type AuthMode = 'sign-in' | 'sign-up'
 type EventStatus = 'draft' | 'published' | 'archived'
 type EventListView = 'active' | 'history'
+type RecurrenceInterval = 'weekly' | 'monthly'
 type AuthUser = {
   id: string
   email?: string
@@ -296,6 +297,10 @@ function formatDateLabelFromInput(value: string) {
   }).format(parsedDate)
 }
 
+function getTodayDateLabel() {
+  return formatDateLabelFromInput(localDateToDateInput(new Date()))
+}
+
 function getAutoRsvpDeadlineLabel(eventDateLabel: string) {
   const eventDateInput = dateLabelToDateInput(eventDateLabel)
   const eventDate = dateInputToLocalDate(eventDateInput)
@@ -311,18 +316,28 @@ function getAutoRsvpDeadlineLabel(eventDateLabel: string) {
   }).format(deadline)
 }
 
-function getNextOccurrenceDateLabel(eventDateLabel: string) {
+function addMonthsClamped(value: Date, months: number) {
+  const targetYear = value.getFullYear()
+  const targetMonth = value.getMonth() + months
+  const targetDay = value.getDate()
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate()
+  return new Date(targetYear, targetMonth, Math.min(targetDay, lastDayOfTargetMonth))
+}
+
+function getNextOccurrenceDateLabel(eventDateLabel: string, interval: RecurrenceInterval = 'weekly') {
   const eventDateInput = dateLabelToDateInput(eventDateLabel)
   const eventDate = dateInputToLocalDate(eventDateInput)
   if (!eventDate) return eventDateLabel
 
-  eventDate.setDate(eventDate.getDate() + 7)
+  const nextDate = interval === 'monthly' ? addMonthsClamped(eventDate, 1) : new Date(eventDate)
+  if (interval === 'weekly') nextDate.setDate(nextDate.getDate() + 7)
+
   return new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  }).format(eventDate)
+  }).format(nextDate)
 }
 
 function timeLabelToTimeInput(label: string) {
@@ -1241,6 +1256,7 @@ function App() {
     setEventRows((rows) => [draft, ...rows])
     setEventLookupState('found')
     applyEventRow(draft)
+    setRsvpDeadlineTouched(false)
     setRsvpRows([])
     setCheckedRunTasks([])
     setMessageLog([])
@@ -1393,7 +1409,7 @@ function App() {
     setEventSaveStatus('Copied to your account')
   }
 
-  async function duplicateEvent(sourceEvent: EventRow = buildEventDraft()) {
+  async function duplicateEvent(sourceEvent: EventRow = buildEventDraft(), interval: RecurrenceInterval = 'weekly') {
     if (isSupabaseConfigured && !authUser?.email) {
       setAuthStatus('Sign in as a host to duplicate events.')
       setAppMode('Events')
@@ -1401,7 +1417,7 @@ function App() {
       return
     }
 
-    const nextDateLabel = getNextOccurrenceDateLabel(sourceEvent.date_label)
+    const nextDateLabel = getNextOccurrenceDateLabel(sourceEvent.date_label, interval)
     const nextRsvpDeadline = getAutoRsvpDeadlineLabel(nextDateLabel) || sourceEvent.rsvp_deadline
     const safeBaseSlug = sourceEvent.slug
       .toLowerCase()
@@ -1430,14 +1446,14 @@ function App() {
     setActiveNavLabel('Dashboard')
     setAppMode('Organizer')
     setEventSaveState('saving')
-    setEventSaveStatus('Duplicating event...')
+    setEventSaveStatus(`Duplicating event ${interval === 'monthly' ? 'monthly' : 'weekly'}...`)
 
     if (!supabase) {
       const nextRows = [draft, ...eventRows]
       setEventRows(nextRows)
       window.localStorage.setItem('gatherkit-events', JSON.stringify(nextRows))
       setEventSaveState('saved')
-      setEventSaveStatus('Event duplicated locally')
+      setEventSaveStatus(`Event duplicated ${interval === 'monthly' ? 'one month' : 'one week'} later locally`)
       return
     }
 
@@ -1482,7 +1498,7 @@ function App() {
 
     setEventSaveState('saved')
     setEventStatus('draft')
-    setEventSaveStatus('Event duplicated as a new draft')
+    setEventSaveStatus(`Event duplicated ${interval === 'monthly' ? 'one month' : 'one week'} later as a new draft`)
   }
 
   async function updateEventStatus(row: EventRow, nextStatus: EventStatus) {
@@ -1926,15 +1942,16 @@ function App() {
 
   function buildStarterEvent(slug: string): EventRow {
     const nextTemplate = eventTemplates[0]
+    const todayLabel = getTodayDateLabel()
 
     return {
       slug,
       event_type: nextTemplate.label,
       name: nextTemplate.headline,
-      date_label: defaultEventDraft.date_label,
+      date_label: todayLabel,
       time_label: nextTemplate.duration,
       location: nextTemplate.location,
-      rsvp_deadline: defaultEventDraft.rsvp_deadline,
+      rsvp_deadline: todayLabel,
       bring_note: nextTemplate.bringNote,
       host_name: hostProfileName.trim() || hostName.trim() || getDefaultHostName(authUser?.email),
       host_phone: hostProfilePhone.trim() || hostPhone.trim() || defaultEventDraft.host_phone,
@@ -2686,11 +2703,17 @@ function App() {
                 <section className="review-grid">
                   <article>
                     <h3>Recurring Event</h3>
-                    <p>Create next week's draft with the same setup and a fresh RSVP list.</p>
-                    <button className="inline-card-action" onClick={() => duplicateEvent()} type="button">
-                      <Copy size={17} />
-                      Duplicate Event
-                    </button>
+                    <p>Create a new draft with the same setup and a fresh RSVP list.</p>
+                    <div className="recurring-actions">
+                      <button className="inline-card-action" onClick={() => duplicateEvent(buildEventDraft(), 'weekly')} type="button">
+                        <Copy size={17} />
+                        Weekly
+                      </button>
+                      <button className="inline-card-action" onClick={() => duplicateEvent(buildEventDraft(), 'monthly')} type="button">
+                        <CalendarDays size={17} />
+                        Monthly
+                      </button>
+                    </div>
                   </article>
                   <article>
                     <h3>Event History</h3>

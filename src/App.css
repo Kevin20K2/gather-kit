@@ -1491,6 +1491,17 @@
   margin-top: 14px;
 }
 
+.recurring-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recurring-actions .inline-card-action {
+  margin-top: 0;
+}
+
 .insights {
   display: grid;
   gap: 20px;
@@ -2650,7 +2661,8 @@ select:focus-visible {
   }
 
   .share-packet .secondary-action,
-  .packet-card button {
+  .packet-card button,
+  .recurring-actions .inline-card-action {
     width: 100%;
   }
 
