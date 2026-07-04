@@ -593,12 +593,11 @@ function App() {
   const archivedEventRows = eventRows.filter((row) => row.status === 'archived')
   const visibleEventRows = eventListView === 'active' ? activeEventRows : archivedEventRows
   const draftEventCount = activeEventRows.filter((row) => (row.status ?? 'draft') === 'draft').length
-  const publishedEventCount = activeEventRows.filter((row) => row.status === 'published').length
   const nextDashboardEvent = activeEventRows[0] ?? null
   const eventListTitle = eventListView === 'active' ? 'Active event plans' : 'Event history'
   const eventListDescription =
     eventListView === 'active'
-      ? 'Current drafts and published event links live here while hosts are still planning or collecting RSVPs.'
+      ? 'Current drafts and published event links owned by this signed-in host live here while planning is still active.'
       : 'Past events stay here as a reference. Duplicate one when you want to run the same gathering again.'
 
   const completeTasks = template.tasks.slice(0, 3)
@@ -751,10 +750,10 @@ function App() {
       : 'Neighbors can still RSVP from the public event link. Organizer tools require a host account.'
   const sidebarStatus = authUser
     ? {
-        title: activeEventRows.length === 1 ? '1 active event' : `${activeEventRows.length} active events`,
+        title: activeEventRows.length === 1 ? '1 of my events active' : `${activeEventRows.length} of my events active`,
         body:
           activeEventRows.length > 0
-            ? 'Open an event to manage invites, reminders, and day-of tasks.'
+            ? `${archivedEventRows.length} in history / ${savedTemplates.length} templates saved.`
             : 'Create your first event draft from the Events dashboard.',
       }
     : {
@@ -3269,10 +3268,20 @@ function App() {
                 <span className="eyebrow">Host Access</span>
                 <h2>This event is owned by another host.</h2>
                 <p>
-                  You are signed in as <strong>{authUser?.email}</strong>, but this event is owned by{' '}
-                  <strong>{hostEmail}</strong>. You can still view the public RSVP page, or make a copy under your
-                  account and manage that version.
+                  You are signed in as <strong>{authUser?.email}</strong>, but edit access belongs to{' '}
+                  <strong>{hostEmail}</strong>. You can still view the public RSVP page, or create your own host-owned
+                  copy and manage that version.
                 </p>
+              </div>
+              <div className="ownership-account-grid">
+                <div>
+                  <span>Signed in as</span>
+                  <strong>{authUser?.email}</strong>
+                </div>
+                <div>
+                  <span>Event owner</span>
+                  <strong>{hostEmail}</strong>
+                </div>
               </div>
               <div className="ownership-summary">
                 <span>Current event</span>
@@ -3327,8 +3336,8 @@ function App() {
             <div className="dashboard-header">
               <div>
                 <span className="eyebrow">Dashboard</span>
-                <h2>Today&apos;s gathering work.</h2>
-                <p>Track active events, publish-ready drafts, RSVP movement, supplies, and day-of gaps.</p>
+                <h2>My host dashboard.</h2>
+                <p>Track events, templates, history, and planning gaps owned by this signed-in host.</p>
               </div>
               <div className="dashboard-actions">
                 <button className="secondary-action" onClick={() => selectNavItem('Events', 'Events')} type="button">
@@ -3346,22 +3355,22 @@ function App() {
               <article>
                 <CalendarDays size={22} />
                 <strong>{activeEventRows.length}</strong>
-                <span>Active Events</span>
+                <span>My Active Events</span>
               </article>
               <article>
                 <FileText size={22} />
                 <strong>{draftEventCount}</strong>
-                <span>Drafts</span>
+                <span>My Drafts</span>
               </article>
               <article>
-                <ExternalLink size={22} />
-                <strong>{publishedEventCount}</strong>
-                <span>Published Links</span>
+                <ClipboardList size={22} />
+                <strong>{archivedEventRows.length}</strong>
+                <span>My History</span>
               </article>
               <article>
-                <Users size={22} />
-                <strong>{attendingCount}</strong>
-                <span>Current RSVPs</span>
+                <FileText size={22} />
+                <strong>{savedTemplates.length}</strong>
+                <span>My Templates</span>
               </article>
             </div>
 
@@ -3393,8 +3402,8 @@ function App() {
                 ) : (
                   <div className="empty-dashboard-panel">
                     <CalendarDays size={42} />
-                    <h3>No active events yet.</h3>
-                    <p>Create a draft, then GatherKit will show what needs attention here.</p>
+                    <h3>No active events owned by this host yet.</h3>
+                    <p>Create a draft under this account, then GatherKit will show what needs attention here.</p>
                     <button className="primary-action" onClick={() => createNewEvent()} type="button">
                       New Event
                       <PlusCircle size={19} />
@@ -3458,8 +3467,8 @@ function App() {
             <div className="events-header">
               <div>
                 <span className="eyebrow">Events</span>
-                <h2>Manage neighborhood gatherings.</h2>
-                <p>Switch between active plans, review history, and duplicate past gatherings into fresh drafts.</p>
+                <h2>Manage my neighborhood gatherings.</h2>
+                <p>Switch between events owned by this host, review history, and duplicate past gatherings into fresh drafts.</p>
               </div>
               <button className="primary-action" onClick={() => createNewEvent()} type="button">
                 New Event
@@ -3672,8 +3681,8 @@ function App() {
                   <h3>{eventListView === 'active' ? 'No active events yet.' : 'No archived events yet.'}</h3>
                   <p>
                     {eventListView === 'active'
-                      ? 'Create your first event draft, then share its public RSVP link with neighbors.'
-                      : 'Archived events will appear here and can be duplicated for future gatherings.'}
+                      ? 'Create your first event draft under this host account, then share its public RSVP link with neighbors.'
+                      : 'Past events owned by this host will appear here and can be duplicated for future gatherings.'}
                   </p>
                 </div>
                 {eventListView === 'active' && (

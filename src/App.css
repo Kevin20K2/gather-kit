@@ -1508,6 +1508,34 @@
   line-height: 1.55;
 }
 
+.ownership-account-grid {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ownership-account-grid div {
+  border: 1px solid #d9e3ed;
+  border-radius: 8px;
+  background: #f8fbfe;
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.ownership-account-grid span {
+  color: #078d96;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ownership-account-grid strong {
+  color: #071936;
+  overflow-wrap: anywhere;
+}
+
 .auth-form {
   grid-column: 2;
   display: grid;
@@ -3279,11 +3307,16 @@ select:focus-visible {
   }
 
   .auth-form,
+  .ownership-account-grid,
   .ownership-summary,
   .ownership-actions,
   .ownership-footnote,
   .public-rsvp-action {
     grid-column: 1;
+  }
+
+  .ownership-account-grid {
+    grid-template-columns: 1fr;
   }
 
   .auth-form {
