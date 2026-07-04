@@ -2087,6 +2087,13 @@ function App() {
       return
     }
 
+    const targetKey = templateDeleteTarget ? templateDeleteTarget.id ?? templateDeleteTarget.name : ''
+    const templateKey = savedTemplate.id ?? savedTemplate.name
+    if (targetKey !== templateKey) {
+      openTemplateDeleteDialog(savedTemplate)
+      return
+    }
+
     stopEditingTemplate()
     setTemplateDeleteTarget(null)
     setEventSaveState('saving')
@@ -4765,7 +4772,7 @@ function App() {
                 Cancel
               </button>
               <button className="danger-action" onClick={() => deleteSavedTemplate(templateDeleteTarget)} type="button">
-                Delete Template
+                Yes, Delete Template
                 <Trash2 size={18} />
               </button>
             </div>
