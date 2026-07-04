@@ -290,6 +290,51 @@ on public.gatherkit_event_supplies
 for delete
 using (public.gatherkit_is_event_host(event_slug));
 
+create table if not exists public.gatherkit_event_roles (
+  id uuid primary key default gen_random_uuid(),
+  event_slug text not null,
+  name text not null,
+  quantity integer not null default 1 check (quantity >= 1),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (event_slug, name)
+);
+
+drop trigger if exists gatherkit_event_roles_set_updated_at on public.gatherkit_event_roles;
+
+create trigger gatherkit_event_roles_set_updated_at
+before update on public.gatherkit_event_roles
+for each row
+execute function public.set_updated_at();
+
+alter table public.gatherkit_event_roles enable row level security;
+
+drop policy if exists "gatherkit_event_roles_public_read" on public.gatherkit_event_roles;
+drop policy if exists "gatherkit_event_roles_host_insert" on public.gatherkit_event_roles;
+drop policy if exists "gatherkit_event_roles_host_update" on public.gatherkit_event_roles;
+drop policy if exists "gatherkit_event_roles_host_delete" on public.gatherkit_event_roles;
+
+create policy "gatherkit_event_roles_public_read"
+on public.gatherkit_event_roles
+for select
+using (true);
+
+create policy "gatherkit_event_roles_host_insert"
+on public.gatherkit_event_roles
+for insert
+with check (public.gatherkit_is_event_host(event_slug));
+
+create policy "gatherkit_event_roles_host_update"
+on public.gatherkit_event_roles
+for update
+using (public.gatherkit_is_event_host(event_slug))
+with check (public.gatherkit_is_event_host(event_slug));
+
+create policy "gatherkit_event_roles_host_delete"
+on public.gatherkit_event_roles
+for delete
+using (public.gatherkit_is_event_host(event_slug));
+
 create table if not exists public.gatherkit_event_messages (
   id uuid primary key default gen_random_uuid(),
   event_slug text not null,
@@ -376,5 +421,15 @@ begin
       and tablename = 'gatherkit_event_supplies'
   ) then
     alter publication supabase_realtime add table public.gatherkit_event_supplies;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'gatherkit_event_roles'
+  ) then
+    alter publication supabase_realtime add table public.gatherkit_event_roles;
   end if;
 end $$;

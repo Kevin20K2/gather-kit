@@ -92,6 +92,12 @@ type SupplyItem = {
   quantity: number
 }
 
+type RoleItem = {
+  id?: string
+  name: string
+  quantity: number
+}
+
 type EventRow = {
   slug: string
   event_type: EventType
@@ -229,9 +235,22 @@ function createSupplyItems(supplies: string[]): SupplyItem[] {
   return supplies.map((name) => ({ name, quantity: 1 }))
 }
 
+function createRoleItems(roles: string[]): RoleItem[] {
+  return roles.map((name) => ({ name, quantity: 1 }))
+}
+
 function mergeSupplyItems(savedItems: SupplyItem[], templateSupplies: string[]): SupplyItem[] {
   const normalizedSavedNames = new Set(savedItems.map((item) => item.name.trim().toLowerCase()))
   const missingTemplateItems: SupplyItem[] = templateSupplies
+    .filter((name) => !normalizedSavedNames.has(name.trim().toLowerCase()))
+    .map((name) => ({ name, quantity: 1 }))
+
+  return [...savedItems, ...missingTemplateItems]
+}
+
+function mergeRoleItems(savedItems: RoleItem[], templateRoles: string[]): RoleItem[] {
+  const normalizedSavedNames = new Set(savedItems.map((item) => item.name.trim().toLowerCase()))
+  const missingTemplateItems: RoleItem[] = templateRoles
     .filter((name) => !normalizedSavedNames.has(name.trim().toLowerCase()))
     .map((name) => ({ name, quantity: 1 }))
 
@@ -441,6 +460,15 @@ function isMissingSuppliesTable(error: { message?: string; code?: string } | nul
   )
 }
 
+function isMissingRolesTable(error: { message?: string; code?: string } | null) {
+  return Boolean(
+    error &&
+      (error.code === '42P01' ||
+        error.message?.toLowerCase().includes('gatherkit_event_roles') ||
+        error.message?.toLowerCase().includes('could not find the table')),
+  )
+}
+
 function eventRowWithoutStatus(row: EventRow) {
   return {
     slug: row.slug,
@@ -520,6 +548,8 @@ function App() {
   const [rsvpSearch, setRsvpSearch] = useState('')
   const [supplyItems, setSupplyItems] = useState<SupplyItem[]>(() => createSupplyItems(eventTemplates[0].supplies))
   const [newSupplyName, setNewSupplyName] = useState('')
+  const [roleItems, setRoleItems] = useState<RoleItem[]>(() => createRoleItems(eventTemplates[0].roles))
+  const [newRoleName, setNewRoleName] = useState('')
   const [eventListView, setEventListView] = useState<EventListView>('active')
 
   const template = useMemo(
@@ -544,8 +574,13 @@ function App() {
   const maybeCount = rsvpRows.filter((row) => row.status === 'Maybe').length
   const attendingCount = yesCount + maybeCount
   const supplyNames = supplyItems.map((item) => item.name).filter(Boolean)
+  const roleNames = roleItems.map((item) => item.name).filter(Boolean)
   const claimedSupplyCounts = supplyItems.reduce<Record<string, number>>((counts, item) => {
     counts[item.name] = rsvpRows.filter((row) => row.status !== 'No' && row.supply === item.name).length
+    return counts
+  }, {})
+  const claimedRoleCounts = roleItems.reduce<Record<string, number>>((counts, item) => {
+    counts[item.name] = rsvpRows.filter((row) => row.status !== 'No' && row.role === item.name).length
     return counts
   }, {})
   const claimedSupplies = new Set(
@@ -554,6 +589,7 @@ function App() {
       .map((item) => item.name),
   )
   const openSupplyItems = supplyItems.filter((item) => (claimedSupplyCounts[item.name] ?? 0) < item.quantity)
+  const openRoleItems = roleItems.filter((item) => (claimedRoleCounts[item.name] ?? 0) < item.quantity)
   const supplySignupDraft = `Supply signup for ${eventName}\n${supplyItems
     .map((item) => {
       const claimedCount = claimedSupplyCounts[item.name] ?? 0
@@ -561,8 +597,12 @@ function App() {
       return `- ${item.name}: ${claimedCount}/${item.quantity} claimed${openCount > 0 ? `, ${openCount} open` : ''}`
     })
     .join('\n')}\nRSVP and choose an item: ${rsvpLink}`
-  const roleSignupDraft = `Volunteer roles for ${eventName}\n${template.roles
-    .map((role) => `- ${role}`)
+  const roleSignupDraft = `Volunteer roles for ${eventName}\n${roleItems
+    .map((item) => {
+      const claimedCount = claimedRoleCounts[item.name] ?? 0
+      const openCount = Math.max(0, item.quantity - claimedCount)
+      return `- ${item.name}: ${claimedCount}/${item.quantity} claimed${openCount > 0 ? `, ${openCount} open` : ''}`
+    })
     .join('\n')}\nRSVP and choose a role: ${rsvpLink}`
   const organizerPacketDraft = [
     `Invite: ${inviteDraft}`,
@@ -580,6 +620,13 @@ function App() {
           .join(', ')
       : 'all supplies are covered'
   }. RSVP here: ${rsvpLink}`
+  const stillNeededRoleMessage = `Roles still open for ${eventName}: ${
+    openRoleItems.length > 0
+      ? openRoleItems
+          .map((item) => `${item.name} (${Math.max(0, item.quantity - (claimedRoleCounts[item.name] ?? 0))} open)`)
+          .join(', ')
+      : 'all roles are covered'
+  }. RSVP here: ${rsvpLink}`
   const noResponseCount = Math.max(0, 18 - rsvpRows.length)
   const audienceCounts: Record<MessageAudience, number> = {
     'Everyone invited': rsvpRows.length + noResponseCount,
@@ -588,11 +635,11 @@ function App() {
     'Supply helpers': rsvpRows.filter((row) => row.supply).length,
     'Volunteer roles': rsvpRows.filter((row) => row.role).length,
   }
-  const assignedRoles = template.roles.map((role) => ({
-    role,
-    owner: rsvpRows.find((row) => row.role === role)?.name ?? '',
+  const assignedRoles = roleItems.map((item) => ({
+    role: item.name,
+    owner: rsvpRows.find((row) => row.role === item.name)?.name ?? '',
   }))
-  const missingRoles = assignedRoles.filter((item) => !item.owner)
+  const missingRoles = openRoleItems
   const filteredRsvpRows = rsvpRows.filter((row) => {
     const matchesFilter = rsvpFilter === 'All' || row.status === rsvpFilter
     const searchText = `${row.name} ${row.status} ${row.supply} ${row.role} ${row.note}`.toLowerCase()
@@ -814,6 +861,12 @@ function App() {
   }, [localDataReady, selectedEventSlug, supplyItems])
 
   useEffect(() => {
+    if (!isSupabaseConfigured && localDataReady) {
+      window.localStorage.setItem(localStorageKey('roles'), JSON.stringify(roleItems))
+    }
+  }, [localDataReady, selectedEventSlug, roleItems])
+
+  useEffect(() => {
     if (supabase) return
 
     try {
@@ -857,6 +910,7 @@ function App() {
     setCheckedRunTasks(readLocalList<string>(localStorageKey('run-tasks'), []))
     setMessageLog(readLocalList<MessageLogItem>(localStorageKey('message-log'), []))
     setSupplyItems(readLocalList<SupplyItem>(localStorageKey('supplies'), createSupplyItems(template.supplies)))
+    setRoleItems(readLocalList<RoleItem>(localStorageKey('roles'), createRoleItems(template.roles)))
   }, [eventRows, localDataReady, selectedEventSlug])
 
   useEffect(() => {
@@ -1119,6 +1173,61 @@ function App() {
     let isMounted = true
     const client = supabase
 
+    async function loadRoles() {
+      const { data, error } = await client
+        .from('gatherkit_event_roles')
+        .select('id,name,quantity')
+        .eq('event_slug', selectedEventSlug)
+        .order('created_at', { ascending: true })
+
+      if (!isMounted) return
+
+      if (isMissingRolesTable(error)) {
+        setRoleItems(createRoleItems(template.roles))
+        return
+      }
+
+      if (error) {
+        setEventSaveStatus(`Could not load roles: ${error.message}`)
+        setEventSaveState('error')
+        setRoleItems(createRoleItems(template.roles))
+        return
+      }
+
+      const savedItems = data as RoleItem[]
+      const nextItems = mergeRoleItems(savedItems, template.roles)
+      setRoleItems(nextItems)
+
+      if (nextItems.length > savedItems.length) {
+        syncRoleItemsForEvent(selectedEventSlug, nextItems.filter((item) => !item.id))
+      }
+    }
+
+    loadRoles()
+
+    const channel = client
+      .channel(`event-roles-${selectedEventSlug}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gatherkit_event_roles', filter: `event_slug=eq.${selectedEventSlug}` },
+        () => {
+          loadRoles()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      client.removeChannel(channel)
+    }
+  }, [selectedEventSlug, eventType])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let isMounted = true
+    const client = supabase
+
     async function loadMessages() {
       const { data, error } = await client
         .from('gatherkit_event_messages')
@@ -1222,6 +1331,7 @@ function App() {
     setBringNote(nextTemplate.bringNote)
     setSelectedRoles(nextTemplate.roles.slice(0, 2))
     setSupplyItems(createSupplyItems(nextTemplate.supplies))
+    setRoleItems(createRoleItems(nextTemplate.roles))
     setPledgedSupply(nextTemplate.supplies[0])
     setPledgedRole('')
   }
@@ -1415,6 +1525,33 @@ function App() {
     }
   }
 
+  async function syncRoleItemsForEvent(slug: string, items: RoleItem[]) {
+    if (!supabase) return
+
+    const rows = items
+      .filter((item) => item.name.trim())
+      .map((item) => ({
+        event_slug: slug,
+        name: item.name.trim(),
+        quantity: Math.max(1, item.quantity),
+      }))
+
+    if (rows.length === 0) return
+
+    const { error } = await supabase.from('gatherkit_event_roles').upsert(rows, { onConflict: 'event_slug,name' })
+
+    if (isMissingRolesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync role lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Role sync error: ${error.message}`)
+      setEventSaveState('error')
+    }
+  }
+
   async function createNewEvent(slugOverride?: string) {
     if (isSupabaseConfigured && !authUser) {
       setAuthStatus('Sign in as a host to create events.')
@@ -1426,6 +1563,7 @@ function App() {
     const slug = slugOverride ?? `event-${Date.now().toString(36)}`
     const draft = buildStarterEvent(slug)
     const starterSupplies = createSupplyItems(eventTemplates[0].supplies)
+    const starterRoles = createRoleItems(eventTemplates[0].roles)
 
     updateEventUrl(slug)
     setSelectedEventSlug(slug)
@@ -1433,6 +1571,7 @@ function App() {
     setEventLookupState('found')
     applyEventRow(draft)
     setSupplyItems(starterSupplies)
+    setRoleItems(starterRoles)
     setRsvpDeadlineTouched(false)
     setRsvpRows([])
     setCheckedRunTasks([])
@@ -1496,6 +1635,7 @@ function App() {
     setEventStatus(draft.status ?? 'draft')
     setEventLookupState('found')
     await syncSupplyItemsForEvent(slug, starterSupplies)
+    await syncRoleItemsForEvent(slug, starterRoles)
     setEventSaveStatus('New event draft created')
   }
 
@@ -1603,6 +1743,7 @@ function App() {
       .replace(/^-+|-+$/g, '') || 'event'
     const slug = `${safeBaseSlug}-next-${Date.now().toString(36)}`
     const duplicatedSupplies = supplyItems.map((item) => ({ name: item.name, quantity: item.quantity }))
+    const duplicatedRoles = roleItems.map((item) => ({ name: item.name, quantity: item.quantity }))
     const draft: EventRow = {
       ...sourceEvent,
       slug,
@@ -1618,6 +1759,7 @@ function App() {
     setEventRows((rows) => [draft, ...rows])
     applyEventRow(draft)
     setSupplyItems(duplicatedSupplies)
+    setRoleItems(duplicatedRoles)
     setRsvpRows([])
     setCheckedRunTasks([])
     setMessageLog([])
@@ -1679,6 +1821,7 @@ function App() {
     setEventSaveState('saved')
     setEventStatus('draft')
     await syncSupplyItemsForEvent(slug, duplicatedSupplies)
+    await syncRoleItemsForEvent(slug, duplicatedRoles)
     setEventSaveStatus(`Event duplicated ${interval === 'monthly' ? 'one month' : 'one week'} later as a new draft`)
   }
 
@@ -1983,6 +2126,108 @@ function App() {
     }
 
     setEventSaveStatus('Supply item removed')
+    setEventSaveState('saved')
+  }
+
+  async function addRoleItem() {
+    const trimmedName = newRoleName.trim()
+    if (!trimmedName) return
+
+    const nextItem: RoleItem = { name: trimmedName, quantity: 1 }
+    const nextItems = mergeRoleItems([...roleItems, nextItem], template.roles)
+    setRoleItems(nextItems)
+    setNewRoleName('')
+
+    if (!supabase) return
+
+    const rowsToSync = nextItems.filter((item) => !item.id)
+    if (rowsToSync.length === 0) return
+
+    const { error } = await supabase.from('gatherkit_event_roles').upsert(
+      rowsToSync.map((item) => ({
+        event_slug: selectedEventSlug,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+      { onConflict: 'event_slug,name' },
+    )
+
+    if (isMissingRolesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync role lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Role sync error: ${error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Role added')
+    setEventSaveState('saved')
+  }
+
+  async function updateRoleItem(originalItem: RoleItem, updates: Partial<RoleItem>) {
+    const nextItem = {
+      ...originalItem,
+      ...updates,
+      quantity: Math.max(1, Number(updates.quantity ?? originalItem.quantity) || 1),
+    }
+
+    setRoleItems((items) => items.map((item) => (item === originalItem || item.id === originalItem.id ? nextItem : item)))
+
+    if (!supabase) return
+
+    const payload = {
+      event_slug: selectedEventSlug,
+      name: nextItem.name.trim() || originalItem.name,
+      quantity: nextItem.quantity,
+    }
+    const result = nextItem.id
+      ? await supabase.from('gatherkit_event_roles').update(payload).eq('id', nextItem.id)
+      : await supabase.from('gatherkit_event_roles').upsert(payload, { onConflict: 'event_slug,name' })
+
+    if (isMissingRolesTable(result.error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync role lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (result.error) {
+      setEventSaveStatus(`Role sync error: ${result.error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Role list updated')
+    setEventSaveState('saved')
+  }
+
+  async function removeRoleItem(itemToRemove: RoleItem) {
+    setRoleItems((items) =>
+      items.filter((item) => (itemToRemove.id ? item.id !== itemToRemove.id : item.name !== itemToRemove.name)),
+    )
+    setRsvpRows((rows) => rows.map((row) => (row.role === itemToRemove.name ? { ...row, role: '' } : row)))
+
+    if (!supabase) return
+
+    const query = supabase.from('gatherkit_event_roles').delete().eq('event_slug', selectedEventSlug)
+    const { error } = itemToRemove.id ? await query.eq('id', itemToRemove.id) : await query.eq('name', itemToRemove.name)
+
+    if (isMissingRolesTable(error)) {
+      setEventSaveStatus('Run the updated Supabase SQL to sync role lists.')
+      setEventSaveState('error')
+      return
+    }
+
+    if (error) {
+      setEventSaveStatus(`Role sync error: ${error.message}`)
+      setEventSaveState('error')
+      return
+    }
+
+    setEventSaveStatus('Role removed')
     setEventSaveState('saved')
   }
 
@@ -3025,7 +3270,7 @@ function App() {
                     <p>Template roles change with the event type.</p>
                   </div>
                   <div className="role-list">
-                    {template.roles.map((role) => (
+                    {roleNames.map((role) => (
                       <button
                         className={selectedRoles.includes(role) ? 'role-token selected' : 'role-token'}
                         key={role}
@@ -3205,7 +3450,13 @@ function App() {
                   </article>
                   <article>
                     <h3>Roles Open</h3>
-                    <p>{selectedRoles.join(', ') || 'No roles selected yet'}</p>
+                    <p>
+                      {openRoleItems.length > 0
+                        ? openRoleItems
+                            .map((item) => `${item.name} (${Math.max(0, item.quantity - (claimedRoleCounts[item.name] ?? 0))} open)`)
+                            .join(', ')
+                        : 'All roles are covered'}
+                    </p>
                   </article>
                   <article>
                     <h3>Host Contact</h3>
@@ -3266,6 +3517,65 @@ function App() {
                             <span>{openCount > 0 ? `${openCount} open` : 'covered'}</span>
                           </div>
                           <button className="rsvp-remove" onClick={() => removeSupplyItem(item)} type="button" aria-label={`Remove ${item.name}`}>
+                            <Trash2 size={17} />
+                          </button>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+                <section className="role-manager">
+                  <div className="section-heading">
+                    <div>
+                      <h3>Role Manager</h3>
+                      <span>{openRoleItems.length} roles still need help</span>
+                    </div>
+                    <button className="secondary-action" onClick={() => copyText('Roles Still Open', stillNeededRoleMessage)} type="button">
+                      <Copy size={18} />
+                      {copiedLabel === 'Roles Still Open' ? 'Copied' : 'Copy Roles Open'}
+                    </button>
+                  </div>
+
+                  <div className="add-supply-row">
+                    <label className="rsvp-search">
+                      <UserRoundCheck size={18} />
+                      <input
+                        aria-label="New volunteer role"
+                        placeholder="Add volunteer role"
+                        value={newRoleName}
+                        onChange={(event) => setNewRoleName(event.target.value)}
+                      />
+                    </label>
+                    <button className="primary-action" onClick={addRoleItem} type="button">
+                      Add Role
+                      <PlusCircle size={19} />
+                    </button>
+                  </div>
+
+                  <div className="supply-management-list">
+                    {roleItems.map((item) => {
+                      const claimedCount = claimedRoleCounts[item.name] ?? 0
+                      const openCount = Math.max(0, item.quantity - claimedCount)
+                      return (
+                        <article className="supply-management-row" key={item.id ?? item.name}>
+                          <label>
+                            Role
+                            <input value={item.name} onChange={(event) => updateRoleItem(item, { name: event.target.value })} />
+                          </label>
+                          <label>
+                            Needed
+                            <input
+                              min="1"
+                              type="number"
+                              value={item.quantity}
+                              onChange={(event) => updateRoleItem(item, { quantity: Number(event.target.value) })}
+                            />
+                          </label>
+                          <div className={openCount > 0 ? 'supply-count open' : 'supply-count covered'}>
+                            <strong>{claimedCount}/{item.quantity}</strong>
+                            <span>{openCount > 0 ? `${openCount} open` : 'covered'}</span>
+                          </div>
+                          <button className="rsvp-remove" onClick={() => removeRoleItem(item)} type="button" aria-label={`Remove ${item.name}`}>
                             <Trash2 size={17} />
                           </button>
                         </article>
@@ -3348,7 +3658,7 @@ function App() {
                             onChange={(event) => updateHostRsvp(row, { role: event.target.value })}
                           >
                             <option value="">None</option>
-                            {template.roles.map((role) => (
+                            {roleNames.map((role) => (
                               <option key={role}>{role}</option>
                             ))}
                           </select>
@@ -3774,7 +4084,7 @@ function App() {
                     <UserRoundCheck size={22} />
                     <select value={pledgedRole} onChange={(event) => setPledgedRole(event.target.value)}>
                       <option value="">No role this time</option>
-                      {template.roles.map((role) => (
+                      {roleNames.map((role) => (
                         <option key={role}>{role}</option>
                       ))}
                     </select>

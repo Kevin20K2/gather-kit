@@ -1019,7 +1019,8 @@
   color: #071936;
 }
 
-.supply-manager {
+.supply-manager,
+.role-manager {
   border: 1px solid #dce6ef;
   border-radius: 8px;
   background: #ffffff;
@@ -1029,7 +1030,8 @@
   gap: 16px;
 }
 
-.supply-manager .section-heading > div {
+.supply-manager .section-heading > div,
+.role-manager .section-heading > div {
   display: grid;
   gap: 4px;
 }
