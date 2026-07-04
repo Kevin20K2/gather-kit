@@ -40,7 +40,7 @@ type EventType =
   | 'Custom'
 
 type PlanningStep = 'Details' | 'Invite' | 'Review'
-type AppMode = 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP' | 'Settings'
+type AppMode = 'Dashboard' | 'Organizer' | 'Events' | 'Message Center' | 'Run Sheet' | 'Neighbor RSVP' | 'Settings'
 type RsvpStatus = 'Yes' | 'Maybe' | 'No'
 type MessageAudience = 'Everyone invited' | 'Yes and maybe' | 'Needs RSVP' | 'Supply helpers' | 'Volunteer roles'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -201,7 +201,7 @@ const eventTemplates: EventTemplate[] = [
 const planningSteps: PlanningStep[] = ['Details', 'Invite', 'Review']
 
 const navItems = [
-  { label: 'Dashboard', icon: Home, mode: 'Organizer' as AppMode },
+  { label: 'Dashboard', icon: Home, mode: 'Dashboard' as AppMode },
   { label: 'Events', icon: CalendarDays, mode: 'Events' as AppMode },
   { label: 'Neighbors', icon: Users, mode: 'Neighbor RSVP' as AppMode },
   { label: 'Messages', icon: MessageSquare, mode: 'Message Center' as AppMode },
@@ -397,7 +397,7 @@ function isPublicEventPath() {
 
 function getInitialMode(): AppMode {
   if (isPublicEventPath()) return 'Neighbor RSVP'
-  return 'Events'
+  return 'Dashboard'
 }
 
 const eventSelectColumns =
@@ -494,6 +494,9 @@ function App() {
   const activeEventRows = eventRows.filter((row) => (row.status ?? 'draft') !== 'archived')
   const archivedEventRows = eventRows.filter((row) => row.status === 'archived')
   const visibleEventRows = eventListView === 'active' ? activeEventRows : archivedEventRows
+  const draftEventCount = activeEventRows.filter((row) => (row.status ?? 'draft') === 'draft').length
+  const publishedEventCount = activeEventRows.filter((row) => row.status === 'published').length
+  const nextDashboardEvent = activeEventRows[0] ?? null
 
   const completeTasks = template.tasks.slice(0, 3)
   const openTasks = template.tasks.slice(3)
@@ -566,7 +569,8 @@ function App() {
       normalizedEventHostEmail &&
       normalizedEventHostEmail !== normalizedSignedInEmail,
   )
-  const shouldShowOwnershipGate = isHostMode && appMode !== 'Events' && appMode !== 'Settings' && isDifferentHostEvent
+  const shouldShowOwnershipGate =
+    isHostMode && appMode !== 'Dashboard' && appMode !== 'Events' && appMode !== 'Settings' && isDifferentHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
   const topbarProfileName = hostProfileName.trim() || getDefaultHostName(authUser?.email)
@@ -580,11 +584,11 @@ function App() {
   const authGateTitle =
     authMode === 'sign-up'
       ? 'Create your host account.'
-      : appMode === 'Events'
+      : appMode === 'Dashboard' || appMode === 'Events'
         ? 'Sign in to manage your events.'
         : 'Sign in to manage this event.'
   const authGateDescription =
-    appMode === 'Events'
+    appMode === 'Dashboard' || appMode === 'Events'
       ? 'Create event plans, RSVP links, message drafts, and day-of run sheets from one host dashboard.'
       : 'Neighbors can still RSVP from the public event link. Organizer tools require a host account.'
   const sidebarStatus = authUser
@@ -820,9 +824,6 @@ function App() {
       }
 
       setEventRows([])
-      if (selectedEventSlug === defaultEventSlug) {
-        await saveEventDetails('Event draft created')
-      }
     }
 
     loadEvents()
@@ -1255,7 +1256,7 @@ function App() {
     if (isSupabaseConfigured && !authUser) {
       setAuthStatus('Sign in as a host to create events.')
       setAppMode('Organizer')
-      setActiveNavLabel('Dashboard')
+      setActiveNavLabel('Events')
       return
     }
 
@@ -1272,7 +1273,7 @@ function App() {
     setCheckedRunTasks([])
     setMessageLog([])
     setActiveStep('Details')
-    setActiveNavLabel('Dashboard')
+    setActiveNavLabel('Events')
     setAppMode('Organizer')
     setEventSaveState('saving')
     setEventSaveStatus(slugOverride ? 'Creating event from link...' : 'Creating new event...')
@@ -1336,7 +1337,7 @@ function App() {
     if (isSupabaseConfigured && !authUser?.email) {
       setAuthStatus('Sign in as a host to copy this event.')
       setAppMode('Organizer')
-      setActiveNavLabel('Dashboard')
+      setActiveNavLabel('Events')
       return
     }
 
@@ -1362,7 +1363,7 @@ function App() {
     setMessageLog([])
     setEventLookupState('found')
     setActiveStep('Details')
-    setActiveNavLabel('Dashboard')
+    setActiveNavLabel('Events')
     setAppMode('Organizer')
     setEventSaveState('saving')
     setEventSaveStatus('Creating your host-owned copy...')
@@ -1454,7 +1455,7 @@ function App() {
     setMessageLog([])
     setEventLookupState('found')
     setActiveStep('Details')
-    setActiveNavLabel('Dashboard')
+    setActiveNavLabel('Events')
     setAppMode('Organizer')
     setEventSaveState('saving')
     setEventSaveStatus(`Duplicating event ${interval === 'monthly' ? 'monthly' : 'weekly'}...`)
@@ -1906,12 +1907,13 @@ function App() {
   }
 
   function navLabelForMode(mode: AppMode) {
+    if (mode === 'Dashboard') return 'Dashboard'
     if (mode === 'Events') return 'Events'
     if (mode === 'Message Center') return 'Messages'
     if (mode === 'Run Sheet') return 'Checklists'
     if (mode === 'Neighbor RSVP') return 'Neighbors'
     if (mode === 'Settings') return 'Settings'
-    return 'Dashboard'
+    return 'Events'
   }
 
   function formatAuthError(error: unknown) {
@@ -2219,7 +2221,7 @@ function App() {
               </p>
             </div>
           </section>
-        ) : eventLookupState === 'missing' && appMode !== 'Events' ? (
+        ) : eventLookupState === 'missing' && appMode !== 'Dashboard' && appMode !== 'Events' && appMode !== 'Settings' ? (
           <section className="event-missing-workspace" aria-label="Event not found">
             <div className="event-missing-panel">
               <div className="heading-icon">
@@ -2242,6 +2244,137 @@ function App() {
                   <ChevronRight size={19} />
                 </button>
               </div>
+            </div>
+          </section>
+        ) : appMode === 'Dashboard' ? (
+          <section className="dashboard-workspace" aria-label="Host dashboard">
+            <div className="dashboard-header">
+              <div>
+                <span className="eyebrow">Dashboard</span>
+                <h2>Today&apos;s gathering work.</h2>
+                <p>Track active events, publish-ready drafts, RSVP movement, supplies, and day-of gaps.</p>
+              </div>
+              <div className="dashboard-actions">
+                <button className="secondary-action" onClick={() => selectNavItem('Events', 'Events')} type="button">
+                  View Events
+                  <ChevronRight size={19} />
+                </button>
+                <button className="primary-action" onClick={() => createNewEvent()} type="button">
+                  New Event
+                  <PlusCircle size={19} />
+                </button>
+              </div>
+            </div>
+
+            <div className="dashboard-metrics">
+              <article>
+                <CalendarDays size={22} />
+                <strong>{activeEventRows.length}</strong>
+                <span>Active Events</span>
+              </article>
+              <article>
+                <FileText size={22} />
+                <strong>{draftEventCount}</strong>
+                <span>Drafts</span>
+              </article>
+              <article>
+                <ExternalLink size={22} />
+                <strong>{publishedEventCount}</strong>
+                <span>Published Links</span>
+              </article>
+              <article>
+                <Users size={22} />
+                <strong>{attendingCount}</strong>
+                <span>Current RSVPs</span>
+              </article>
+            </div>
+
+            <div className="dashboard-grid">
+              <section className="dashboard-panel next-event-panel">
+                <div className="section-heading">
+                  <h3>Next Event</h3>
+                  <span>{nextDashboardEvent ? nextDashboardEvent.status ?? 'draft' : 'none'}</span>
+                </div>
+                {nextDashboardEvent ? (
+                  <>
+                    <strong>{nextDashboardEvent.name}</strong>
+                    <div className="dashboard-event-meta">
+                      <span><CalendarDays size={16} /> {nextDashboardEvent.date_label}</span>
+                      <span><Clock3 size={16} /> {nextDashboardEvent.time_label}</span>
+                      <span><MapPin size={16} /> {nextDashboardEvent.location}</span>
+                    </div>
+                    <div className="dashboard-card-actions">
+                      <button className="primary-action" onClick={() => selectEvent(nextDashboardEvent)} type="button">
+                        Open Planner
+                        <ChevronRight size={19} />
+                      </button>
+                      <button className="secondary-action" onClick={() => copyText('RSVP Link', getEventUrl(nextDashboardEvent.slug))} type="button">
+                        <Copy size={18} />
+                        {copiedLabel === 'RSVP Link' ? 'Copied' : 'Copy RSVP Link'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-dashboard-panel">
+                    <CalendarDays size={42} />
+                    <h3>No active events yet.</h3>
+                    <p>Create a draft, then GatherKit will show what needs attention here.</p>
+                    <button className="primary-action" onClick={() => createNewEvent()} type="button">
+                      New Event
+                      <PlusCircle size={19} />
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              <section className="dashboard-panel">
+                <div className="section-heading">
+                  <h3>Needs Attention</h3>
+                  <span>{openRunSheetTasks.length + stillNeededSupplies.length + missingRoles.length} open</span>
+                </div>
+                <div className="attention-list">
+                  <div>
+                    <Gift size={18} />
+                    <span>{stillNeededSupplies.length} supplies still open</span>
+                  </div>
+                  <div>
+                    <UserRoundCheck size={18} />
+                    <span>{missingRoles.length} volunteer roles unfilled</span>
+                  </div>
+                  <div>
+                    <ClipboardList size={18} />
+                    <span>{openRunSheetTasks.length} run sheet tasks open</span>
+                  </div>
+                  <div>
+                    <MessageSquare size={18} />
+                    <span>{noResponseCount} neighbors still need RSVP</span>
+                  </div>
+                </div>
+                <button className="secondary-action" onClick={() => switchMode('Run Sheet')} type="button">
+                  Open Run Sheet
+                  <ChevronRight size={19} />
+                </button>
+              </section>
+
+              <section className="dashboard-panel">
+                <div className="section-heading">
+                  <h3>Recent RSVPs</h3>
+                  <span>{rsvpRows.length} responses</span>
+                </div>
+                <div className="dashboard-rsvp-list">
+                  {rsvpRows.slice(0, 4).map((row) => (
+                    <div key={row.name}>
+                      <strong>{row.name}</strong>
+                      <span>{row.status}{row.supply ? ` / ${row.supply}` : ''}</span>
+                    </div>
+                  ))}
+                  {rsvpRows.length === 0 && <p className="empty-note">No RSVPs yet.</p>}
+                </div>
+                <button className="secondary-action" onClick={() => switchMode('Neighbor RSVP')} type="button">
+                  View RSVP Page
+                  <ChevronRight size={19} />
+                </button>
+              </section>
             </div>
           </section>
         ) : appMode === 'Events' ? (
