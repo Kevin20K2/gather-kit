@@ -1828,6 +1828,25 @@
   box-shadow: 0 0 0 4px rgba(7, 154, 163, 0.12);
 }
 
+.template-inline-status {
+  color: #435d73;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.template-inline-status.saving {
+  color: #078d96;
+}
+
+.template-inline-status.saved {
+  color: #087f5b;
+}
+
+.template-inline-status.error {
+  color: #9b3d12;
+}
+
 .template-actions {
   margin-top: 6px;
   display: flex;

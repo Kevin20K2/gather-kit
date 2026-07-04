@@ -2143,6 +2143,17 @@ function App() {
       return
     }
 
+    const duplicateTemplate = savedTemplates.some((item) => {
+      const itemKey = item.id ?? item.name
+      return itemKey !== templateKey && item.name.trim().toLowerCase() === nextName.trim().toLowerCase()
+    })
+
+    if (duplicateTemplate) {
+      setTemplateLibraryState('error')
+      setTemplateLibraryStatus('That template name is already used. Choose a different name or cancel.')
+      return
+    }
+
     setTemplateLibraryState('saving')
     setTemplateLibraryStatus('Renaming template...')
 
@@ -2169,13 +2180,17 @@ function App() {
 
     if (isMissingTemplatesTable(error)) {
       setTemplateLibraryState('error')
-      setTemplateLibraryStatus('Run the updated Supabase SQL to edit templates.')
+      setTemplateLibraryStatus('I could not save that name. Choose a different name or cancel, then run the updated SQL if this keeps happening.')
       return
     }
 
     if (error) {
       setTemplateLibraryState('error')
-      setTemplateLibraryStatus(error.code === '23505' ? 'A template with that name already exists.' : `Template rename error: ${error.message}`)
+      setTemplateLibraryStatus(
+        error.code === '23505'
+          ? 'That template name is already used. Choose a different name or cancel.'
+          : `Template rename error: ${error.message}`,
+      )
       return
     }
 
@@ -3437,6 +3452,9 @@ function App() {
                               value={editingTemplateName}
                               onChange={(event) => setEditingTemplateName(event.target.value)}
                             />
+                            <span className={`template-inline-status ${templateLibraryState}`}>
+                              {templateLibraryStatus || 'Choose a unique name, then save or cancel.'}
+                            </span>
                           </label>
                         ) : (
                           <strong>{savedTemplate.name}</strong>
@@ -3495,7 +3513,7 @@ function App() {
                   </div>
                 </div>
               )}
-              {templateLibraryStatus && (
+              {templateLibraryStatus && !editingTemplateKey && (
                 <span className={`template-save-feedback ${templateLibraryState}`}>{templateLibraryStatus}</span>
               )}
             </section>
