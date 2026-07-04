@@ -555,6 +555,7 @@ function App() {
   const [eventStatus, setEventStatus] = useState<EventStatus>(defaultEventDraft.status ?? 'draft')
   const [eventSaveStatus, setEventSaveStatus] = useState('Ready to save')
   const [eventSaveState, setEventSaveState] = useState<SaveState>('idle')
+  const [archiveEventTarget, setArchiveEventTarget] = useState<EventRow | null>(null)
   const [templateSaveStatus, setTemplateSaveStatus] = useState('Ready to save as a template')
   const [templateSaveState, setTemplateSaveState] = useState<SaveState>('idle')
   const [editingTemplateKey, setEditingTemplateKey] = useState('')
@@ -2314,6 +2315,12 @@ function App() {
       return
     }
 
+    if (nextStatus === 'archived' && archiveEventTarget?.slug !== row.slug) {
+      openArchiveEventDialog(row)
+      return
+    }
+
+    setArchiveEventTarget(null)
     const nextRow = { ...row, status: nextStatus }
     setEventRows((rows) => mergeEventRows(rows, nextRow))
     if (row.slug === selectedEventSlug) {
@@ -2354,6 +2361,16 @@ function App() {
 
     setEventSaveState('saved')
     setEventSaveStatus(nextStatus === 'archived' ? 'Event moved to History' : 'Event restored to Active')
+  }
+
+  function openArchiveEventDialog(row: EventRow) {
+    setArchiveEventTarget(row)
+    setEventSaveState('idle')
+    setEventSaveStatus(`Confirm before moving ${row.name} to History.`)
+  }
+
+  function closeArchiveEventDialog() {
+    setArchiveEventTarget(null)
   }
 
   function createEventFromCurrentLink() {
@@ -3638,7 +3655,7 @@ function App() {
                             <Copy size={16} />
                             Duplicate
                           </button>
-                          <button className="event-card-archive" onClick={() => updateEventStatus(row, 'archived')} type="button">
+                          <button className="event-card-archive" onClick={() => openArchiveEventDialog(row)} type="button">
                             <FileText size={16} />
                             Move to History
                           </button>
@@ -4051,7 +4068,11 @@ function App() {
                     <p>{eventStatus === 'archived' ? 'Restore this event to the active dashboard.' : 'Move this event to History when it is complete.'}</p>
                     <button
                       className={eventStatus === 'archived' ? 'inline-card-action' : 'inline-card-action danger'}
-                      onClick={() => updateEventStatus(buildEventDraft(), eventStatus === 'archived' ? 'draft' : 'archived')}
+                      onClick={() =>
+                        eventStatus === 'archived'
+                          ? updateEventStatus(buildEventDraft(), 'draft')
+                          : openArchiveEventDialog(buildEventDraft())
+                      }
                       type="button"
                     >
                       <FileText size={17} />
@@ -4815,6 +4836,37 @@ function App() {
               <button className="danger-action" onClick={() => deleteSavedTemplate(templateDeleteTarget)} type="button">
                 Yes, Delete Template
                 <Trash2 size={18} />
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {archiveEventTarget && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-labelledby="archive-event-title" aria-modal="true" className="confirm-dialog" role="dialog">
+            <div className="heading-icon archive-icon">
+              <FileText />
+            </div>
+            <div>
+              <span className="eyebrow">Move to History</span>
+              <h2 id="archive-event-title">Move this event to History?</h2>
+              <p>
+                <strong>{archiveEventTarget.name}</strong> will leave Active events and move to History. You can restore
+                it later or plan another copy from History.
+              </p>
+            </div>
+            <div className="confirm-dialog-summary">
+              <span>{archiveEventTarget.event_type}</span>
+              <strong>{archiveEventTarget.date_label}</strong>
+              <small>{archiveEventTarget.location}</small>
+            </div>
+            <div className="confirm-dialog-actions">
+              <button className="secondary-action" onClick={closeArchiveEventDialog} type="button">
+                Cancel
+              </button>
+              <button className="archive-action" onClick={() => updateEventStatus(archiveEventTarget, 'archived')} type="button">
+                Move to History
+                <FileText size={18} />
               </button>
             </div>
           </section>

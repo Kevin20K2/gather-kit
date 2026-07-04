@@ -2164,6 +2164,11 @@
   color: #9b3d12;
 }
 
+.archive-icon {
+  background: #effbfb;
+  color: #078d96;
+}
+
 .confirm-dialog h2 {
   margin: 4px 0 8px;
   color: #071936;
@@ -2219,6 +2224,21 @@
   border-radius: 8px;
   background: #fff2ec;
   color: #9b3d12;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.archive-action {
+  min-height: 44px;
+  border: 1px solid #9ddde2;
+  border-radius: 8px;
+  background: #effbfb;
+  color: #078d96;
   display: inline-flex;
   align-items: center;
   gap: 8px;
