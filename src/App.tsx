@@ -717,6 +717,7 @@ function App() {
   const isHostSignedIn = !isSupabaseConfigured || Boolean(authUser)
   const isHostMode = appMode !== 'Neighbor RSVP'
   const isPublicInviteMode = isPublicEventPath() && appMode === 'Neighbor RSVP'
+  const isEventToolMode = appMode === 'Organizer' || appMode === 'Message Center' || appMode === 'Run Sheet'
   const shouldShowAuthGate = isHostMode && !isHostSignedIn
   const normalizedSignedInEmail = authUser?.email?.trim().toLowerCase() ?? ''
   const normalizedEventHostEmail = hostEmail.trim().toLowerCase()
@@ -727,7 +728,15 @@ function App() {
       normalizedEventHostEmail !== normalizedSignedInEmail,
   )
   const shouldShowOwnershipGate =
-    isHostMode && appMode !== 'Dashboard' && appMode !== 'Events' && appMode !== 'Settings' && isDifferentHostEvent
+    isPublicEventPath() &&
+    isHostMode &&
+    appMode !== 'Dashboard' &&
+    appMode !== 'Events' &&
+    appMode !== 'Settings' &&
+    isDifferentHostEvent
+  const hasSelectedActiveHostEvent = activeEventRows.some((row) => row.slug === selectedEventSlug)
+  const shouldShowHostEventGate =
+    !isPublicEventPath() && isHostSignedIn && isEventToolMode && !hasSelectedActiveHostEvent
   const hostEmailLabel = authUser?.email ?? 'Host'
   const greetingName = authUser?.email ? authUser.email.split('@')[0] : 'there'
   const topbarProfileName = hostProfileName.trim() || getDefaultHostName(authUser?.email)
@@ -2825,11 +2834,24 @@ function App() {
   }
 
   function switchMode(mode: AppMode) {
+    const modeNeedsOwnedEvent = mode === 'Organizer' || mode === 'Message Center' || mode === 'Run Sheet'
+    if (!isPublicEventPath() && modeNeedsOwnedEvent && !hasSelectedActiveHostEvent && activeEventRows[0]) {
+      selectEvent(activeEventRows[0], mode)
+      return
+    }
+
     setActiveNavLabel(navLabelForMode(mode))
     setAppMode(mode)
   }
 
   function selectNavItem(label: string, mode: AppMode) {
+    const modeNeedsOwnedEvent = mode === 'Organizer' || mode === 'Message Center' || mode === 'Run Sheet'
+    if (!isPublicEventPath() && modeNeedsOwnedEvent && !hasSelectedActiveHostEvent && activeEventRows[0]) {
+      selectEvent(activeEventRows[0], mode)
+      setMenuOpen(false)
+      return
+    }
+
     setActiveNavLabel(label)
     setAppMode(mode)
     setMenuOpen(false)
@@ -3256,6 +3278,50 @@ function App() {
                 View Public RSVP
                 <ChevronRight size={19} />
               </button>
+            </div>
+          </section>
+        ) : shouldShowHostEventGate ? (
+          <section className="ownership-workspace" aria-label="Choose host event">
+            <div className="ownership-panel host-event-panel">
+              <div className="heading-icon">
+                <CalendarDays />
+              </div>
+              <div>
+                <span className="eyebrow">My Events</span>
+                <h2>Choose one of your events first.</h2>
+                <p>
+                  {appMode === 'Message Center'
+                    ? 'Message Center needs one of your active events so it can use the right RSVP, supply, and role lists.'
+                    : appMode === 'Run Sheet'
+                      ? 'Run Sheet needs one of your active events so day-of tasks stay tied to the right gathering.'
+                      : 'Organizer tools need one of your active events, or you can create a new draft.'}
+                </p>
+              </div>
+              <div className="ownership-summary">
+                <span>Signed in as</span>
+                <strong>{authUser?.email ?? hostEmailLabel}</strong>
+                <small>
+                  {activeEventRows.length > 0
+                    ? `${activeEventRows.length} active events available`
+                    : 'No active events owned by this host yet'}
+                </small>
+              </div>
+              <div className="ownership-actions">
+                {activeEventRows[0] && (
+                  <button className="primary-action" onClick={() => selectEvent(activeEventRows[0], appMode)} type="button">
+                    Open My Next Event
+                    <ChevronRight size={19} />
+                  </button>
+                )}
+                <button className={activeEventRows[0] ? 'secondary-action' : 'primary-action'} onClick={() => createNewEvent()} type="button">
+                  New Event
+                  <PlusCircle size={19} />
+                </button>
+                <button className="secondary-action" onClick={() => selectNavItem('Events', 'Events')} type="button">
+                  View My Events
+                  <ChevronRight size={19} />
+                </button>
+              </div>
             </div>
           </section>
         ) : shouldShowOwnershipGate ? (
