@@ -559,7 +559,7 @@ function App() {
   const [templateSaveState, setTemplateSaveState] = useState<SaveState>('idle')
   const [editingTemplateKey, setEditingTemplateKey] = useState('')
   const [editingTemplateName, setEditingTemplateName] = useState('')
-  const [pendingDeleteTemplateKey, setPendingDeleteTemplateKey] = useState('')
+  const [templateDeleteTarget, setTemplateDeleteTarget] = useState<SavedEventTemplate | null>(null)
   const [templateLibraryStatus, setTemplateLibraryStatus] = useState('')
   const [templateLibraryState, setTemplateLibraryState] = useState<SaveState>('idle')
   const [selectedRoles, setSelectedRoles] = useState(['Greeter', 'Snack table'])
@@ -1986,7 +1986,7 @@ function App() {
 
     setTemplateLibraryStatus('')
     setTemplateLibraryState('idle')
-    setPendingDeleteTemplateKey('')
+    setTemplateDeleteTarget(null)
 
     const slug = `event-${Date.now().toString(36)}`
     const today = getTodayDateLabel()
@@ -2087,18 +2087,8 @@ function App() {
       return
     }
 
-    const templateKey = savedTemplate.id ?? savedTemplate.name
-
-    if (pendingDeleteTemplateKey !== templateKey) {
-      stopEditingTemplate()
-      setPendingDeleteTemplateKey(templateKey)
-      setTemplateLibraryState('error')
-      setTemplateLibraryStatus(`Click Confirm Delete to remove ${savedTemplate.name}.`)
-      return
-    }
-
     stopEditingTemplate()
-    setPendingDeleteTemplateKey('')
+    setTemplateDeleteTarget(null)
     setEventSaveState('saving')
     setEventSaveStatus('Deleting event template...')
     setTemplateLibraryState('saving')
@@ -2149,8 +2139,19 @@ function App() {
     setTemplateLibraryStatus('Template deleted')
   }
 
+  function openTemplateDeleteDialog(savedTemplate: SavedEventTemplate) {
+    stopEditingTemplate()
+    setTemplateDeleteTarget(savedTemplate)
+    setTemplateLibraryStatus('')
+    setTemplateLibraryState('idle')
+  }
+
+  function closeTemplateDeleteDialog() {
+    setTemplateDeleteTarget(null)
+  }
+
   function startEditingTemplate(savedTemplate: SavedEventTemplate) {
-    setPendingDeleteTemplateKey('')
+    setTemplateDeleteTarget(null)
     setEditingTemplateKey(savedTemplate.id ?? savedTemplate.name)
     setEditingTemplateName(savedTemplate.name)
     setTemplateLibraryStatus('')
@@ -2163,7 +2164,7 @@ function App() {
   }
 
   async function renameSavedTemplate(savedTemplate: SavedEventTemplate) {
-    setPendingDeleteTemplateKey('')
+    setTemplateDeleteTarget(null)
     const nextName = templateDisplayName(editingTemplateName)
     const templateKey = savedTemplate.id ?? savedTemplate.name
 
@@ -2237,7 +2238,7 @@ function App() {
   }
 
   async function updateTemplateFromCurrentEvent(savedTemplate: SavedEventTemplate) {
-    setPendingDeleteTemplateKey('')
+    setTemplateDeleteTarget(null)
     const templateKey = savedTemplate.id ?? savedTemplate.name
     const payload = {
       event_type: eventType,
@@ -3471,7 +3472,6 @@ function App() {
                   {savedTemplates.map((savedTemplate) => {
                     const templateKey = savedTemplate.id ?? savedTemplate.name
                     const isEditingTemplate = editingTemplateKey === templateKey
-                    const isPendingDelete = pendingDeleteTemplateKey === templateKey
                     return (
                       <article className="template-card" key={templateKey}>
                         <span className="event-card-type">{savedTemplate.event_type}</span>
@@ -3525,13 +3525,9 @@ function App() {
                               <Copy size={16} />
                               Update Setup
                             </button>
-                            <button
-                              className={isPendingDelete ? 'event-card-archive confirm-delete' : 'event-card-archive'}
-                              onClick={() => deleteSavedTemplate(savedTemplate)}
-                              type="button"
-                            >
+                            <button className="event-card-archive" onClick={() => openTemplateDeleteDialog(savedTemplate)} type="button">
                               <Trash2 size={16} />
-                              {isPendingDelete ? 'Confirm Delete' : 'Delete'}
+                              Delete
                             </button>
                           </div>
                         )}
@@ -4740,6 +4736,42 @@ function App() {
           </section>
         )}
       </main>
+      {templateDeleteTarget && (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            aria-labelledby="template-delete-title"
+            aria-modal="true"
+            className="confirm-dialog"
+            role="dialog"
+          >
+            <div className="heading-icon danger-icon">
+              <Trash2 />
+            </div>
+            <div>
+              <span className="eyebrow">Delete Template</span>
+              <h2 id="template-delete-title">Delete this saved setup?</h2>
+              <p>
+                This will remove <strong>{templateDeleteTarget.name}</strong> from your saved templates. Existing events
+                and RSVPs will not be changed.
+              </p>
+            </div>
+            <div className="confirm-dialog-summary">
+              <span>{templateDeleteTarget.event_type}</span>
+              <strong>{templateDeleteTarget.time_label}</strong>
+              <small>{templateDeleteTarget.location}</small>
+            </div>
+            <div className="confirm-dialog-actions">
+              <button className="secondary-action" onClick={closeTemplateDeleteDialog} type="button">
+                Cancel
+              </button>
+              <button className="danger-action" onClick={() => deleteSavedTemplate(templateDeleteTarget)} type="button">
+                Delete Template
+                <Trash2 size={18} />
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
