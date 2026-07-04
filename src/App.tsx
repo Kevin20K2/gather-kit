@@ -22,6 +22,8 @@ import {
   Send,
   Settings,
   Sparkles,
+  Search,
+  Trash2,
   UserRoundCheck,
   Users,
 } from 'lucide-react'
@@ -49,6 +51,7 @@ type AuthMode = 'sign-in' | 'sign-up'
 type EventStatus = 'draft' | 'published' | 'archived'
 type EventListView = 'active' | 'history'
 type RecurrenceInterval = 'weekly' | 'monthly'
+type RsvpFilter = 'All' | RsvpStatus
 type AuthUser = {
   id: string
   email?: string
@@ -485,6 +488,8 @@ function App() {
   const [messageLog, setMessageLog] = useState<MessageLogItem[]>([])
   const [checkedRunTasks, setCheckedRunTasks] = useState<string[]>(['confirm-location', 'post-welcome-sign'])
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[]>(initialRsvpRows)
+  const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>('All')
+  const [rsvpSearch, setRsvpSearch] = useState('')
   const [eventListView, setEventListView] = useState<EventListView>('active')
 
   const template = useMemo(
@@ -539,6 +544,25 @@ function App() {
     owner: rsvpRows.find((row) => row.role === role)?.name ?? '',
   }))
   const missingRoles = assignedRoles.filter((item) => !item.owner)
+  const filteredRsvpRows = rsvpRows.filter((row) => {
+    const matchesFilter = rsvpFilter === 'All' || row.status === rsvpFilter
+    const searchText = `${row.name} ${row.status} ${row.supply} ${row.role} ${row.note}`.toLowerCase()
+    return matchesFilter && searchText.includes(rsvpSearch.trim().toLowerCase())
+  })
+  const rsvpExportText = [
+    `${eventName} RSVP List`,
+    `Event: ${date} / ${time} / ${location}`,
+    '',
+    ...rsvpRows.map((row) =>
+      [
+        row.name,
+        row.status,
+        row.supply ? `bringing ${row.supply}` : 'no supply',
+        row.role ? `role ${row.role}` : 'no role',
+        row.note || 'no note',
+      ].join(' | '),
+    ),
+  ].join('\n')
   const runSheetTasks = [
     { id: 'confirm-location', time: '3:30 PM', task: `Confirm access to ${location}`, owner: hostName },
     { id: 'setup-tables', time: '4:15 PM', task: 'Set up tables, chairs, and supply station', owner: assignedRoles[0]?.owner || hostName },
@@ -1663,6 +1687,56 @@ function App() {
     })
     setSubmittedMessage(`${nextRow.name}'s RSVP is now in the organizer dashboard.`)
     window.setTimeout(() => setSubmittedMessage(''), 2400)
+  }
+
+  async function updateHostRsvp(originalRow: RsvpRow, updates: Partial<RsvpRow>) {
+    const nextRow = {
+      ...originalRow,
+      ...updates,
+    }
+    if (nextRow.status === 'No') {
+      nextRow.supply = ''
+      nextRow.role = ''
+    }
+
+    setRsvpRows((rows) => rows.map((row) => (row === originalRow || row.id === originalRow.id ? nextRow : row)))
+
+    if (!supabase) return
+
+    const { error } = await supabase.from('gatherkit_event_rsvps').upsert(
+      {
+        event_slug: selectedEventSlug,
+        name: nextRow.name,
+        status: nextRow.status,
+        note: nextRow.note,
+        supply: nextRow.supply,
+        role: nextRow.role,
+      },
+      { onConflict: 'event_slug,name' },
+    )
+
+    if (error) {
+      setSubmittedMessage(`Could not update RSVP: ${error.message}`)
+      window.setTimeout(() => setSubmittedMessage(''), 3000)
+    }
+  }
+
+  async function removeHostRsvp(rowToRemove: RsvpRow) {
+    setRsvpRows((rows) =>
+      rows.filter((row) => (rowToRemove.id ? row.id !== rowToRemove.id : row.name !== rowToRemove.name)),
+    )
+
+    if (!supabase) return
+
+    const query = supabase.from('gatherkit_event_rsvps').delete().eq('event_slug', selectedEventSlug)
+    const { error } = rowToRemove.id
+      ? await query.eq('id', rowToRemove.id)
+      : await query.eq('name', rowToRemove.name)
+
+    if (error) {
+      setSubmittedMessage(`Could not remove RSVP: ${error.message}`)
+      window.setTimeout(() => setSubmittedMessage(''), 3000)
+    }
   }
 
   async function persistMessage(audience: MessageAudience, body: string, count: number) {
@@ -2893,15 +2967,107 @@ function App() {
                     </p>
                   </article>
                 </section>
-                <section className="rsvp-table">
-                  <h3>RSVP Snapshot</h3>
-                  {rsvpRows.map((row) => (
-                    <div className="rsvp-row" key={row.name}>
-                      <strong>{row.name}</strong>
-                      <span>{row.status}</span>
-                      <p>{row.note}</p>
+                <section className="rsvp-manager">
+                  <div className="section-heading">
+                    <div>
+                      <h3>RSVP Manager</h3>
+                      <span>{filteredRsvpRows.length} of {rsvpRows.length} responses shown</span>
                     </div>
-                  ))}
+                    <button className="secondary-action" onClick={() => copyText('RSVP List', rsvpExportText)} type="button">
+                      <Copy size={18} />
+                      {copiedLabel === 'RSVP List' ? 'Copied' : 'Copy List'}
+                    </button>
+                  </div>
+
+                  <div className="rsvp-tools">
+                    <div className="rsvp-filter" aria-label="RSVP status filter">
+                      {(['All', 'Yes', 'Maybe', 'No'] as RsvpFilter[]).map((filter) => (
+                        <button
+                          className={rsvpFilter === filter ? 'selected' : ''}
+                          key={filter}
+                          onClick={() => setRsvpFilter(filter)}
+                          type="button"
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="rsvp-search">
+                      <Search size={18} />
+                      <input
+                        aria-label="Search RSVPs"
+                        placeholder="Search name, supply, role, or note"
+                        value={rsvpSearch}
+                        onChange={(event) => setRsvpSearch(event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="rsvp-management-list">
+                    {filteredRsvpRows.map((row) => (
+                      <article className="rsvp-management-row" key={row.id ?? row.name}>
+                        <div className="rsvp-person">
+                          <strong>{row.name}</strong>
+                          <span>{row.note || 'No note yet'}</span>
+                        </div>
+                        <label>
+                          Status
+                          <select
+                            value={row.status}
+                            onChange={(event) => updateHostRsvp(row, { status: event.target.value as RsvpStatus })}
+                          >
+                            <option>Yes</option>
+                            <option>Maybe</option>
+                            <option>No</option>
+                          </select>
+                        </label>
+                        <label>
+                          Supply
+                          <select
+                            disabled={row.status === 'No'}
+                            value={row.supply}
+                            onChange={(event) => updateHostRsvp(row, { supply: event.target.value })}
+                          >
+                            <option value="">Open</option>
+                            {template.supplies.map((supply) => (
+                              <option key={supply}>{supply}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Role
+                          <select
+                            disabled={row.status === 'No'}
+                            value={row.role}
+                            onChange={(event) => updateHostRsvp(row, { role: event.target.value })}
+                          >
+                            <option value="">None</option>
+                            {template.roles.map((role) => (
+                              <option key={role}>{role}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="rsvp-note-field">
+                          Note
+                          <input
+                            value={row.note}
+                            onChange={(event) => updateHostRsvp(row, { note: event.target.value })}
+                            placeholder="Add host note"
+                          />
+                        </label>
+                        <button className="rsvp-remove" onClick={() => removeHostRsvp(row)} type="button" aria-label={`Remove ${row.name}`}>
+                          <Trash2 size={17} />
+                        </button>
+                      </article>
+                    ))}
+                    {filteredRsvpRows.length === 0 && (
+                      <div className="empty-rsvp-manager">
+                        <Users size={38} />
+                        <strong>No RSVPs match this view.</strong>
+                        <span>Clear the search or switch filters to see more responses.</span>
+                      </div>
+                    )}
+                  </div>
                 </section>
               </div>
             )}

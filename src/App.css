@@ -840,6 +840,185 @@
   gap: 12px;
 }
 
+.rsvp-manager {
+  border: 1px solid #dce6ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(10, 36, 66, 0.045);
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.rsvp-manager .section-heading {
+  align-items: center;
+}
+
+.rsvp-manager .section-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.rsvp-tools {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.rsvp-filter {
+  border: 1px solid #d9e3ed;
+  border-radius: 8px;
+  background: #f7fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 4px;
+  gap: 4px;
+}
+
+.rsvp-filter button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #435d73;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.rsvp-filter button.selected {
+  background: #ffffff;
+  color: #078d96;
+  box-shadow: 0 8px 18px rgba(10, 36, 66, 0.08);
+}
+
+.rsvp-search {
+  min-height: 44px;
+  border: 1px solid #d6e0ea;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.rsvp-search svg {
+  color: #078f99;
+  flex: 0 0 auto;
+}
+
+.rsvp-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: #12233e;
+  font: inherit;
+  font-size: 14px;
+}
+
+.rsvp-management-list {
+  display: grid;
+  gap: 10px;
+}
+
+.rsvp-management-row {
+  min-width: 0;
+  border: 1px solid #e0e8f0;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(98px, 0.7fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.rsvp-person {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  align-self: center;
+}
+
+.rsvp-person strong {
+  color: #071936;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.rsvp-person span {
+  color: #526b80;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.rsvp-management-row label {
+  min-width: 0;
+  color: #526b80;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.rsvp-management-row select,
+.rsvp-management-row input {
+  min-width: 0;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d6e0ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #12233e;
+  font: inherit;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+.rsvp-management-row select:disabled {
+  color: #8da0af;
+  background: #eef3f7;
+}
+
+.rsvp-remove {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #f0d3c3;
+  border-radius: 8px;
+  background: #fff8f4;
+  color: #b23b0b;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.empty-rsvp-manager {
+  border: 1px dashed #cbd8e3;
+  border-radius: 8px;
+  background: #f8fbfd;
+  color: #526b80;
+  padding: 22px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.empty-rsvp-manager svg {
+  color: #079aa3;
+}
+
+.empty-rsvp-manager strong {
+  color: #071936;
+}
+
 .rsvp-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2453,6 +2632,14 @@ select:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .rsvp-management-row {
+    grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(120px, 0.8fr)) auto;
+  }
+
+  .rsvp-note-field {
+    grid-column: 1 / -1;
+  }
+
   .insights {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2602,6 +2789,24 @@ select:focus-visible {
   .dashboard-metrics,
   .audience-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rsvp-tools,
+  .rsvp-management-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rsvp-filter {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .rsvp-filter button {
+    flex: 1;
+  }
+
+  .rsvp-remove {
+    width: 100%;
   }
 
   .dashboard-header {
