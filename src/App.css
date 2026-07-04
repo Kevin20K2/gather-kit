@@ -728,6 +728,90 @@
   flex: 0 0 auto;
 }
 
+.share-packet {
+  border: 1px solid #dce6ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(10, 36, 66, 0.045);
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.share-packet .section-heading {
+  margin-bottom: 0;
+}
+
+.share-packet .section-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.packet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.packet-card {
+  min-width: 0;
+  border: 1px solid #dce6ef;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 14px;
+  display: grid;
+  grid-template-rows: auto minmax(72px, 1fr) auto;
+  gap: 12px;
+}
+
+.packet-card > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0b1c36;
+}
+
+.packet-card svg {
+  color: #079aa3;
+  flex: 0 0 auto;
+}
+
+.packet-card h4 {
+  margin: 0;
+  color: #0b1c36;
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.packet-card p {
+  max-height: 112px;
+  margin: 0;
+  color: #435d73;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.packet-card button {
+  justify-self: start;
+  min-height: 36px;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #20364f;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .metric {
   display: block;
   color: #078d96;
@@ -2545,7 +2629,8 @@ select:focus-visible {
   }
 
   .invite-workspace,
-  .review-grid {
+  .review-grid,
+  .packet-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2562,6 +2647,19 @@ select:focus-visible {
   .published-card .secondary-action {
     flex: 1 1 auto;
     width: 100%;
+  }
+
+  .share-packet .secondary-action,
+  .packet-card button {
+    width: 100%;
+  }
+
+  .packet-card {
+    grid-template-rows: auto auto auto;
+  }
+
+  .packet-card p {
+    max-height: none;
   }
 
   .status-options {

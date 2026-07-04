@@ -491,6 +491,20 @@ function App() {
   const maybeCount = rsvpRows.filter((row) => row.status === 'Maybe').length
   const attendingCount = yesCount + maybeCount
   const claimedSupplies = new Set(rsvpRows.filter((row) => row.status !== 'No').map((row) => row.supply).filter(Boolean))
+  const supplySignupDraft = `Supply signup for ${eventName}\n${template.supplies
+    .map((supply) => `- ${supply}: ${claimedSupplies.has(supply) ? 'claimed' : 'open'}`)
+    .join('\n')}\nRSVP and choose an item: ${rsvpLink}`
+  const roleSignupDraft = `Volunteer roles for ${eventName}\n${template.roles
+    .map((role) => `- ${role}`)
+    .join('\n')}\nRSVP and choose a role: ${rsvpLink}`
+  const organizerPacketDraft = [
+    `Invite: ${inviteDraft}`,
+    `Reminder: ${reminderDraft}`,
+    `Flyer:\n${flyerDraft}`,
+    `RSVP link: ${rsvpLink}`,
+    supplySignupDraft,
+    roleSignupDraft,
+  ].join('\n\n')
   const stillNeededSupplies = template.supplies.filter(
     (supply) => !claimedSupplies.has(supply) && supply !== pledgedSupply,
   )
@@ -2620,7 +2634,7 @@ function App() {
                   </button>
                 </section>
                 {eventStatus === 'published' && (
-                  <section className="published-card">
+                  <section className="published-card share-link-card">
                     <div>
                       <span className="event-status published">Published</span>
                       <h3>Public RSVP link is ready.</h3>
@@ -2632,11 +2646,44 @@ function App() {
                     </button>
                   </section>
                 )}
+                <section className="share-packet">
+                  <div className="section-heading">
+                    <div>
+                      <h3>Organizer Packet</h3>
+                      <span>Invite text, reminder, flyer, RSVP link, supplies, and roles.</span>
+                    </div>
+                    <button className="secondary-action" onClick={() => copyText('Organizer Packet', organizerPacketDraft)} type="button">
+                      <Copy size={18} />
+                      {copiedLabel === 'Organizer Packet' ? 'Copied' : 'Copy All'}
+                    </button>
+                  </div>
+                  <div className="packet-grid">
+                    {[
+                      { label: 'Invite', icon: Megaphone, copy: inviteDraft },
+                      { label: 'Reminder', icon: Bell, copy: reminderDraft },
+                      { label: 'Flyer', icon: FileText, copy: flyerDraft },
+                      { label: 'RSVP Link', icon: ExternalLink, copy: rsvpLink },
+                      { label: 'Supplies', icon: Gift, copy: supplySignupDraft },
+                      { label: 'Roles', icon: UserRoundCheck, copy: roleSignupDraft },
+                    ].map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <article className="packet-card" key={item.label}>
+                          <div>
+                            <Icon size={18} />
+                            <h4>{item.label}</h4>
+                          </div>
+                          <p>{item.copy}</p>
+                          <button onClick={() => copyText(item.label, item.copy)} type="button">
+                            <Copy size={16} />
+                            {copiedLabel === item.label ? 'Copied' : 'Copy'}
+                          </button>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
                 <section className="review-grid">
-                  <article>
-                    <h3>Organizer Packet</h3>
-                    <p>Invite copy, text reminder, flyer copy, RSVP link, and supply signup.</p>
-                  </article>
                   <article>
                     <h3>Recurring Event</h3>
                     <p>Create next week's draft with the same setup and a fresh RSVP list.</p>
